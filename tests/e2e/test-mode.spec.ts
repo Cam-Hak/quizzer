@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 test.describe("Test Mode", () => {
-  async function createDeckWithCards(page: any) {
+  async function createDeckWithCards(page: Page) {
     await page.goto("/");
     await page.click("text=+ New Deck");
     await page.fill('input[placeholder="Deck title"]', "Quiz Deck");
