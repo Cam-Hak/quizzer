@@ -18,6 +18,15 @@ function clone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export async function mockInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   switch (cmd) {
     case "list_decks":
@@ -78,12 +87,13 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     case "generate_test": {
       const tDeck = mockDecks.find((d) => d.id === args?.deckId);
       if (!tDeck) return [];
+      const useWritten = args?.questionType === "written" || tDeck.cards.length < 4;
       return tDeck.cards.map((c): Question => ({
         card_id: c.id,
         prompt: c.front,
         correct_answer: c.back,
-        question_type: (args?.questionType === "written" ? "Written" : "MultipleChoice") as "Written" | "MultipleChoice",
-        options: args?.questionType === "written" ? null : [c.back, "Wrong 1", "Wrong 2", "Wrong 3"],
+        question_type: useWritten ? "Written" : "MultipleChoice",
+        options: useWritten ? null : shuffle([c.back, "Wrong 1", "Wrong 2", "Wrong 3"]),
       }));
     }
     case "save_test_result":

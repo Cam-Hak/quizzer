@@ -45,7 +45,8 @@
     justify-content: center;
     padding: 32px;
     border-radius: var(--radius-lg);
-    border: 1px solid var(--border);
+    outline: 1px solid var(--border);
+    outline-offset: -1px;
   }
   .flashcard-front {
     background: var(--bg-secondary);

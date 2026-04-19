@@ -3,6 +3,7 @@
   import { currentDeck } from "$lib/stores/deckStore";
   import Home from "./routes/Home.svelte";
   import DeckEditor from "./routes/DeckEditor.svelte";
+  import Flashcards from "./routes/Flashcards.svelte";
   import Study from "./routes/Study.svelte";
   import Test from "./routes/Test.svelte";
 
@@ -24,6 +25,9 @@
       <button class:active={$currentView === "editor"} onclick={() => navigate("editor")}>
         Edit Deck
       </button>
+      <button class:active={$currentView === "flashcards"} onclick={() => navigate("flashcards")}>
+        Flashcards
+      </button>
       <button class:active={$currentView === "study"} onclick={() => navigate("study")}>
         Study
       </button>
@@ -38,6 +42,8 @@
       <Home />
     {:else if $currentView === "editor"}
       <DeckEditor />
+    {:else if $currentView === "flashcards"}
+      <Flashcards />
     {:else if $currentView === "study"}
       <Study />
     {:else if $currentView === "test"}

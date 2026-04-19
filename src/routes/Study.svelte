@@ -1,95 +1,325 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { currentDeck } from "$lib/stores/deckStore";
-  import { api, type Card } from "$lib/tauri";
-  import Flashcard from "../components/Flashcard.svelte";
-  import RatingButtons from "../components/RatingButtons.svelte";
+  import { api, type Question } from "$lib/tauri";
+  import ProgressBar from "../components/ProgressBar.svelte";
 
-  let queue = $state<Card[]>([]);
-  let currentIndex = $state(0);
-  let flipped = $state(false);
-  let sessionComplete = $state(false);
-  let reviewed = $state(0);
-  let correct = $state(0);
-  let againQueue = $state<Card[]>([]);
+  interface CardProgress {
+    cardId: string;
+    level: number;
+    wrongCount: number;
+    lastAnswered: number;
+  }
 
-  let currentCard = $derived(queue[currentIndex] ?? null);
+  type Phase = "loading" | "active" | "complete";
+
+  let phase = $state<Phase>("loading");
+  let cardProgress = $state<Map<string, CardProgress>>(new Map());
+  let mcQuestions = $state<Map<string, Question>>(new Map());
+  let useWrittenOnly = $state(false);
+
+  let currentCardId = $state<string | null>(null);
+  let currentQuestionType = $state<"MultipleChoice" | "Written">("MultipleChoice");
+  let currentOptions = $state<string[]>([]);
+  let currentPrompt = $state("");
+  let currentCorrectAnswer = $state("");
+  let writtenInput = $state("");
+
+  let feedbackState = $state<{
+    correct: boolean;
+    correctAnswer: string;
+    newLevel: number;
+    justLearned: boolean;
+    selectedOption: string | null;
+  } | null>(null);
+
+  let totalAnswered = $state(0);
+  let totalCorrect = $state(0);
+
+  let learnedCount = $derived(
+    [...cardProgress.values()].filter((p) => p.level >= 3).length
+  );
+  let totalCards = $derived(cardProgress.size);
+
+  let cardList = $derived(
+    $currentDeck?.cards.map((c) => ({
+      id: c.id,
+      front: c.front,
+      level: cardProgress.get(c.id)?.level ?? 0,
+    })) ?? []
+  );
 
   onMount(async () => {
-    if (!$currentDeck) return;
-    const dueIds = await api.getDueCards($currentDeck.id);
-    queue = $currentDeck.cards.filter((c) => dueIds.includes(c.id));
-    if (queue.length === 0) sessionComplete = true;
+    if (!$currentDeck || $currentDeck.cards.length === 0) return;
+
+    useWrittenOnly = $currentDeck.cards.length < 4;
+
+    const questions = await api.generateTest($currentDeck.id, null, "multiple_choice");
+    for (const q of questions) {
+      mcQuestions.set(q.card_id, q);
+    }
+
+    for (const card of $currentDeck.cards) {
+      cardProgress.set(card.id, {
+        cardId: card.id,
+        level: 0,
+        wrongCount: 0,
+        lastAnswered: 0,
+      });
+    }
+
+    pickNextCard();
+    phase = "active";
   });
 
-  async function handleRate(rating: number) {
-    if (!$currentDeck || !currentCard) return;
-
-    await api.submitRating($currentDeck.id, currentCard.id, rating);
-    reviewed++;
-
-    if (rating >= 2) {
-      correct++;
-    } else {
-      againQueue.push(currentCard);
+  function pickNextCard() {
+    const remaining = [...cardProgress.values()].filter((p) => p.level < 3);
+    if (remaining.length === 0) {
+      phase = "complete";
+      return;
     }
 
-    flipped = false;
+    remaining.sort((a, b) => {
+      if (a.level !== b.level) return a.level - b.level;
+      return a.lastAnswered - b.lastAnswered;
+    });
 
-    if (currentIndex < queue.length - 1) {
-      currentIndex++;
-    } else if (againQueue.length > 0) {
-      queue = [...againQueue];
-      againQueue = [];
-      currentIndex = 0;
+    const next = remaining[0];
+    currentCardId = next.cardId;
+
+    if (useWrittenOnly || next.level >= 2) {
+      currentQuestionType = "Written";
+      const card = $currentDeck!.cards.find((c) => c.id === next.cardId)!;
+      currentPrompt = card.front;
+      currentCorrectAnswer = card.back;
+      currentOptions = [];
+      writtenInput = "";
     } else {
-      sessionComplete = true;
+      currentQuestionType = "MultipleChoice";
+      const q = mcQuestions.get(next.cardId)!;
+      currentPrompt = q.prompt;
+      currentCorrectAnswer = q.correct_answer;
+      currentOptions = [...(q.options ?? [])];
     }
+
+    feedbackState = null;
+  }
+
+  async function handleMcAnswer(selected: string) {
+    if (feedbackState) return;
+    const correct = selected === currentCorrectAnswer;
+    await recordAnswer(correct, selected);
+  }
+
+  async function handleWrittenAnswer() {
+    if (feedbackState || !writtenInput.trim()) return;
+    const correct =
+      writtenInput.trim().toLowerCase() === currentCorrectAnswer.trim().toLowerCase();
+    await recordAnswer(correct, null);
+  }
+
+  async function recordAnswer(correct: boolean, selectedOption: string | null) {
+    if (!currentCardId) return;
+
+    const progress = cardProgress.get(currentCardId)!;
+    totalAnswered++;
+
+    const newLevel = correct ? progress.level + 1 : 0;
+    const newWrongCount = correct ? progress.wrongCount : progress.wrongCount + 1;
+
+    if (correct) totalCorrect++;
+
+    const updated = {
+      ...progress,
+      level: newLevel,
+      wrongCount: newWrongCount,
+      lastAnswered: Date.now(),
+    };
+    cardProgress.set(currentCardId, updated);
+
+    feedbackState = {
+      correct,
+      correctAnswer: currentCorrectAnswer,
+      newLevel: newLevel,
+      justLearned: newLevel >= 3,
+      selectedOption,
+    };
+
+    if (newLevel >= 3 && $currentDeck) {
+      const rating = wrongCountToRating(newWrongCount);
+      await api.submitRating($currentDeck.id, currentCardId, rating);
+    }
+  }
+
+  function wrongCountToRating(wrongCount: number): number {
+    if (wrongCount === 0) return 4;
+    if (wrongCount === 1) return 3;
+    if (wrongCount === 2) return 2;
+    return 1;
+  }
+
+  function advance() {
+    pickNextCard();
+  }
+
+  function studyAgain() {
+    for (const [id] of cardProgress) {
+      cardProgress.set(id, {
+        cardId: id,
+        level: 0,
+        wrongCount: 0,
+        lastAnswered: 0,
+      });
+    }
+    totalAnswered = 0;
+    totalCorrect = 0;
+    pickNextCard();
+    phase = "active";
+  }
+
+  function levelLabel(level: number): string {
+    if (level === 0) return "New";
+    if (level === 1) return "Seen";
+    if (level === 2) return "Almost";
+    return "Learned";
   }
 </script>
 
-{#if !$currentDeck}
-  <p>No deck selected.</p>
-{:else if sessionComplete}
+{#if !$currentDeck || $currentDeck.cards.length === 0}
+  <div class="empty-state">
+    <h2>{$currentDeck?.title ?? "No Deck"}</h2>
+    <p class="empty">No cards in this deck. Add some in the editor.</p>
+  </div>
+{:else if phase === "loading"}
+  <div class="loading">
+    <p>Loading study session...</p>
+  </div>
+{:else if phase === "active" && currentCardId}
+  <div class="study-view">
+    <div class="study-header">
+      <div class="progress-section">
+        <span class="progress-text">{learnedCount} of {totalCards} learned</span>
+        <ProgressBar value={learnedCount} max={totalCards} />
+      </div>
+      <div class="card-chips">
+        {#each cardList as card}
+          <div
+            class="card-chip"
+            class:chip-active={card.id === currentCardId}
+            class:chip-0={card.level === 0}
+            class:chip-1={card.level === 1}
+            class:chip-2={card.level === 2}
+            class:chip-learned={card.level >= 3}
+            title="{card.front} — {levelLabel(card.level)}"
+          ></div>
+        {/each}
+      </div>
+    </div>
+
+    <div class="question-card">
+      <div class="question-meta">
+        <span class="level-badge level-{cardProgress.get(currentCardId)?.level ?? 0}">
+          {levelLabel(cardProgress.get(currentCardId)?.level ?? 0)}
+        </span>
+        <span class="question-type-label">
+          {currentQuestionType === "MultipleChoice" ? "Multiple Choice" : "Written Answer"}
+        </span>
+      </div>
+
+      <div class="level-steps">
+        {#each [0, 1, 2] as step}
+          <div
+            class="level-step"
+            class:step-done={step < (cardProgress.get(currentCardId)?.level ?? 0)}
+            class:step-current={step === (cardProgress.get(currentCardId)?.level ?? 0) && (cardProgress.get(currentCardId)?.level ?? 0) < 3}
+          ></div>
+        {/each}
+        <span class="level-steps-label">
+          {Math.min(cardProgress.get(currentCardId)?.level ?? 0, 3)}/3
+        </span>
+      </div>
+
+      <h3>{currentPrompt}</h3>
+
+      {#if !feedbackState}
+        {#if currentQuestionType === "MultipleChoice"}
+          <div class="mc-options">
+            {#each currentOptions as option}
+              <button class="mc-option" onclick={() => handleMcAnswer(option)}>
+                {option}
+              </button>
+            {/each}
+          </div>
+        {:else}
+          <div class="written-form">
+            <input
+              bind:value={writtenInput}
+              placeholder="Type your answer..."
+              onkeydown={(e) => e.key === "Enter" && handleWrittenAnswer()}
+            />
+            <button class="primary" onclick={handleWrittenAnswer}>Submit</button>
+          </div>
+        {/if}
+      {:else}
+        <div class="feedback" class:correct={feedbackState.correct} class:incorrect={!feedbackState.correct} class:just-learned={feedbackState.justLearned}>
+          {#if feedbackState.justLearned}
+            <div class="learned-celebration">
+              <span class="learned-check">&#10003;</span>
+              <p class="feedback-text learned-text">Learned!</p>
+            </div>
+            <p class="learned-subtitle">You've mastered this term</p>
+          {:else if feedbackState.correct}
+            <p class="feedback-text">Correct!</p>
+            <p class="level-up-msg">
+              Level {feedbackState.newLevel}/3 — {#if feedbackState.newLevel === 1}Keep going!{:else if feedbackState.newLevel === 2}One more to master!{:else}Nice!{/if}
+            </p>
+          {:else}
+            <p class="feedback-text">Incorrect</p>
+            <p class="correct-answer">Correct answer: {feedbackState.correctAnswer}</p>
+            <p class="reset-msg">Reset to start — you'll see this one again</p>
+          {/if}
+
+          {#if currentQuestionType === "MultipleChoice" && !feedbackState.justLearned}
+            <div class="mc-options feedback-options">
+              {#each currentOptions as option}
+                <div
+                  class="mc-option disabled"
+                  class:option-correct={option === feedbackState.correctAnswer}
+                  class:option-selected-wrong={!feedbackState.correct && option === feedbackState.selectedOption}
+                  class:option-dim={option !== feedbackState.correctAnswer && option !== feedbackState.selectedOption}
+                >
+                  {option}
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <button class="primary continue-btn" onclick={advance}>Continue</button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{:else if phase === "complete"}
   <div class="session-summary">
     <h2>Session Complete</h2>
-    {#if reviewed > 0}
-      <div class="stats">
-        <div class="stat">
-          <span class="stat-value">{reviewed}</span>
-          <span class="stat-label">Reviewed</span>
-        </div>
-        <div class="stat">
-          <span class="stat-value">{Math.round((correct / reviewed) * 100)}%</span>
-          <span class="stat-label">Accuracy</span>
-        </div>
+    <p class="complete-subtitle">You've learned all {totalCards} terms</p>
+    <div class="stats">
+      <div class="stat">
+        <span class="stat-value">{totalCards}</span>
+        <span class="stat-label">Learned</span>
       </div>
-    {:else}
-      <p class="empty">No cards due for review. Come back later!</p>
-    {/if}
-  </div>
-{:else if currentCard}
-  <div class="study-view">
-    <div class="study-progress">
-      <span>{currentIndex + 1} / {queue.length}</span>
-      {#if againQueue.length > 0}
-        <span class="again-count">{againQueue.length} to repeat</span>
-      {/if}
+      <div class="stat">
+        <span class="stat-value">{totalAnswered}</span>
+        <span class="stat-label">Answers</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">
+          {totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0}%
+        </span>
+        <span class="stat-label">Accuracy</span>
+      </div>
     </div>
-
-    <Flashcard
-      front={currentCard.front}
-      back={currentCard.back}
-      {flipped}
-    />
-
-    <div class="study-actions">
-      {#if !flipped}
-        <button class="primary" onclick={() => (flipped = true)}>Show Answer</button>
-      {:else}
-        <RatingButtons onrate={handleRate} />
-      {/if}
-    </div>
+    <button class="primary study-again-btn" onclick={studyAgain}>Study Again</button>
   </div>
 {/if}
 
@@ -99,23 +329,255 @@
     flex-direction: column;
     align-items: center;
     gap: 24px;
-    padding-top: 32px;
+    padding-top: 24px;
+    max-width: 600px;
   }
-  .study-progress {
+  .study-header {
+    width: 100%;
     display: flex;
-    gap: 16px;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .progress-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .progress-text {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  /* Card chips — overview of all cards */
+  .card-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .card-chip {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+  }
+  .chip-active {
+    transform: scale(1.4);
+  }
+  .chip-0 {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+  }
+  .chip-1 {
+    background: #60a5fa;
+  }
+  .chip-2 {
+    background: #fbbf24;
+  }
+  .chip-learned {
+    background: var(--success);
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  }
+
+  /* Question card */
+  .question-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    width: 100%;
+  }
+  .question-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .level-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .level-0 {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+  }
+  .level-1 {
+    background: #1a3a5c;
+    color: #60a5fa;
+  }
+  .level-2 {
+    background: #1a3c2a;
+    color: #4ade80;
+  }
+  .question-type-label {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* Level steps — 3 dots showing progress toward learned */
+  .level-steps {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+  .level-step {
+    width: 24px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .level-step.step-done {
+    background: var(--success);
+    border-color: var(--success);
+  }
+  .level-step.step-current {
+    background: var(--bg-tertiary);
+    border-color: var(--accent);
+  }
+  .level-steps-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 4px;
+  }
+
+  .question-card h3 {
+    margin-bottom: 24px;
+    font-size: 18px;
+  }
+
+  /* MC options */
+  .mc-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mc-option {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .mc-option:hover:not(.disabled) {
+    border-color: var(--accent);
+    background: var(--bg-primary);
+  }
+  .mc-option.disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+  .mc-option.option-correct {
+    border-color: var(--success);
+    background: rgba(74, 222, 128, 0.1);
+    opacity: 1;
+  }
+  .mc-option.option-selected-wrong {
+    border-color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+    opacity: 1;
+  }
+  .mc-option.option-dim {
+    opacity: 0.35;
+  }
+  .written-form {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* Feedback */
+  .feedback {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .feedback-text {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .feedback.correct .feedback-text {
+    color: var(--success);
+  }
+  .feedback.incorrect .feedback-text {
+    color: var(--danger);
+  }
+  .level-up-msg {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .correct-answer {
     color: var(--text-secondary);
     font-size: 14px;
   }
-  .again-count {
-    color: var(--warning);
+  .reset-msg {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
   }
-  .study-actions {
-    margin-top: 16px;
+  .feedback-options {
+    margin-top: 4px;
   }
+  .continue-btn {
+    margin-top: 8px;
+    align-self: flex-start;
+  }
+
+  /* Learned celebration */
+  .learned-celebration {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .learned-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--success);
+    color: #000;
+    font-size: 18px;
+    font-weight: 700;
+    flex-shrink: 0;
+    animation: pop-in 0.3s ease-out;
+  }
+  .learned-text {
+    font-size: 20px !important;
+    color: var(--success) !important;
+  }
+  .learned-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .just-learned {
+    border-left: 3px solid var(--success);
+    padding-left: 16px;
+  }
+
+  @keyframes pop-in {
+    0% { transform: scale(0); }
+    70% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+
+  /* Session summary */
   .session-summary {
     text-align: center;
     padding-top: 64px;
+  }
+  .complete-subtitle {
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-size: 15px;
   }
   .stats {
     display: flex;
@@ -138,8 +600,20 @@
     font-size: 14px;
     margin-top: 4px;
   }
+  .study-again-btn {
+    margin-top: 32px;
+  }
+  .empty-state {
+    text-align: center;
+    padding-top: 64px;
+  }
   .empty {
     color: var(--text-muted);
     margin-top: 16px;
+  }
+  .loading {
+    text-align: center;
+    padding-top: 64px;
+    color: var(--text-secondary);
   }
 </style>
