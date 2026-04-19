@@ -13,7 +13,19 @@ Download the latest release for your platform from the [Releases](../../releases
 | Windows | `.msi` installer |
 | Linux | `.AppImage` or `.deb` |
 
-**macOS:** Open the `.dmg`, drag Quizard to Applications. On first launch you may need to right-click and select "Open" to bypass Gatekeeper.
+**macOS:** Open the `.dmg`, drag Quizard to Applications. The app is not code-signed, so macOS will block it. To fix this, open Terminal and run:
+
+```bash
+xattr -cr /Applications/Quizard.app
+```
+
+If the `.dmg` itself won't open ("damaged and can't be opened"), clear the quarantine on it first:
+
+```bash
+xattr -d com.apple.quarantine ~/Downloads/Quizard*.dmg
+```
+
+Then reopen the `.dmg` and drag the app to Applications.
 
 **Windows:** Run the `.msi` installer. If prompted about WebView2, the installer will download it automatically.
 
