@@ -69,37 +69,38 @@ impl Deck {
 }
 
 use crate::storage;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-fn decks_dir(data_dir: &PathBuf) -> PathBuf {
+fn decks_dir(data_dir: &Path) -> Result<PathBuf, String> {
     storage::ensure_subdir(data_dir, "decks")
 }
 
-fn deck_path(data_dir: &PathBuf, deck_id: &str) -> PathBuf {
-    decks_dir(data_dir).join(format!("{}.json", deck_id))
+fn deck_path(data_dir: &Path, deck_id: &str) -> Result<PathBuf, String> {
+    storage::validate_id(deck_id)?;
+    Ok(decks_dir(data_dir)?.join(format!("{}.json", deck_id)))
 }
 
-pub fn save_deck(data_dir: &PathBuf, deck: &Deck) {
-    let path = deck_path(data_dir, &deck.id);
-    storage::write_json(&path, deck);
+pub fn save_deck(data_dir: &Path, deck: &Deck) -> Result<(), String> {
+    let path = deck_path(data_dir, &deck.id)?;
+    storage::write_json(&path, deck)
 }
 
-pub fn load_deck(data_dir: &PathBuf, deck_id: &str) -> Option<Deck> {
-    let path = deck_path(data_dir, deck_id);
-    storage::read_json(&path)
+pub fn load_deck(data_dir: &Path, deck_id: &str) -> Result<Option<Deck>, String> {
+    let path = deck_path(data_dir, deck_id)?;
+    Ok(storage::read_json(&path))
 }
 
-pub fn list_decks(data_dir: &PathBuf) -> Vec<Deck> {
-    let dir = decks_dir(data_dir);
-    storage::list_json_files(&dir)
+pub fn list_decks(data_dir: &Path) -> Result<Vec<Deck>, String> {
+    let dir = decks_dir(data_dir)?;
+    Ok(storage::list_json_files(&dir)
         .iter()
         .filter_map(|p| storage::read_json::<Deck>(p))
-        .collect()
+        .collect())
 }
 
-pub fn delete_deck(data_dir: &PathBuf, deck_id: &str) -> bool {
-    let path = deck_path(data_dir, deck_id);
-    storage::delete_json(&path)
+pub fn delete_deck(data_dir: &Path, deck_id: &str) -> Result<bool, String> {
+    let path = deck_path(data_dir, deck_id)?;
+    Ok(storage::delete_json(&path))
 }
 
 #[cfg(test)]
@@ -148,8 +149,8 @@ mod tests {
         let mut deck = Deck::new("Bio".to_string(), "Ch1".to_string());
         deck.add_card("What is DNA?".to_string(), "Deoxyribonucleic acid".to_string());
 
-        save_deck(&path, &deck);
-        let loaded = load_deck(&path, &deck.id).unwrap();
+        save_deck(&path, &deck).unwrap();
+        let loaded = load_deck(&path, &deck.id).unwrap().unwrap();
 
         assert_eq!(loaded.title, "Bio");
         assert_eq!(loaded.cards.len(), 1);
@@ -159,10 +160,10 @@ mod tests {
     #[test]
     fn test_list_decks() {
         let (_dir, path) = test_dir();
-        save_deck(&path, &Deck::new("Deck 1".to_string(), "".to_string()));
-        save_deck(&path, &Deck::new("Deck 2".to_string(), "".to_string()));
+        save_deck(&path, &Deck::new("Deck 1".to_string(), "".to_string())).unwrap();
+        save_deck(&path, &Deck::new("Deck 2".to_string(), "".to_string())).unwrap();
 
-        let decks = list_decks(&path);
+        let decks = list_decks(&path).unwrap();
         assert_eq!(decks.len(), 2);
     }
 
@@ -170,9 +171,16 @@ mod tests {
     fn test_delete_deck() {
         let (_dir, path) = test_dir();
         let deck = Deck::new("Delete me".to_string(), "".to_string());
-        save_deck(&path, &deck);
+        save_deck(&path, &deck).unwrap();
 
-        assert!(delete_deck(&path, &deck.id));
-        assert!(load_deck(&path, &deck.id).is_none());
+        assert!(delete_deck(&path, &deck.id).unwrap());
+        assert!(load_deck(&path, &deck.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_path_traversal_rejected() {
+        let (_dir, path) = test_dir();
+        assert!(load_deck(&path, "../../../etc/passwd").is_err());
+        assert!(delete_deck(&path, "../../malicious").is_err());
     }
 }

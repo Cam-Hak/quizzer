@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::decks::{Card, Deck};
 use crate::storage;
@@ -95,23 +95,21 @@ pub fn generate_questions(
         .collect()
 }
 
-pub fn check_written_answer(given: &str, correct: &str) -> bool {
-    given.trim().to_lowercase() == correct.trim().to_lowercase()
-}
-
-pub fn save_test_result(data_dir: &PathBuf, result: &TestResult) {
-    let dir = storage::ensure_subdir(data_dir, "tests");
+pub fn save_test_result(data_dir: &Path, result: &TestResult) -> Result<(), String> {
+    storage::validate_id(&result.id)?;
+    let dir = storage::ensure_subdir(data_dir, "tests")?;
     let path = dir.join(format!("{}.json", result.id));
-    storage::write_json(&path, result);
+    storage::write_json(&path, result)
 }
 
-pub fn load_test_results(data_dir: &PathBuf, deck_id: &str) -> Vec<TestResult> {
-    let dir = storage::ensure_subdir(data_dir, "tests");
-    storage::list_json_files(&dir)
+pub fn load_test_results(data_dir: &Path, deck_id: &str) -> Result<Vec<TestResult>, String> {
+    storage::validate_id(deck_id)?;
+    let dir = storage::ensure_subdir(data_dir, "tests")?;
+    Ok(storage::list_json_files(&dir)
         .iter()
         .filter_map(|p| storage::read_json::<TestResult>(p))
         .filter(|r| r.deck_id == deck_id)
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]
@@ -168,20 +166,15 @@ mod tests {
     }
 
     #[test]
-    fn test_check_written_answer() {
-        assert!(check_written_answer("  Hello  ", "hello"));
-        assert!(check_written_answer("HELLO", "hello"));
-        assert!(!check_written_answer("wrong", "right"));
-    }
-
-    #[test]
     fn test_save_and_load_test_results() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().to_path_buf();
 
+        let test_id = uuid::Uuid::new_v4().to_string();
+        let deck_id = uuid::Uuid::new_v4().to_string();
         let result = TestResult {
-            id: "t1".to_string(),
-            deck_id: "d1".to_string(),
+            id: test_id,
+            deck_id: deck_id.clone(),
             score: 8,
             total: 10,
             answers: vec![
@@ -190,8 +183,8 @@ mod tests {
             completed_at: Utc::now(),
         };
 
-        save_test_result(&path, &result);
-        let loaded = load_test_results(&path, "d1");
+        save_test_result(&path, &result).unwrap();
+        let loaded = load_test_results(&path, &deck_id).unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].score, 8);
     }
@@ -201,28 +194,30 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().to_path_buf();
 
+        let d1 = uuid::Uuid::new_v4().to_string();
+        let d2 = uuid::Uuid::new_v4().to_string();
         let r1 = TestResult {
-            id: "t1".to_string(),
-            deck_id: "d1".to_string(),
+            id: uuid::Uuid::new_v4().to_string(),
+            deck_id: d1.clone(),
             score: 5,
             total: 10,
             answers: vec![],
             completed_at: Utc::now(),
         };
         let r2 = TestResult {
-            id: "t2".to_string(),
-            deck_id: "d2".to_string(),
+            id: uuid::Uuid::new_v4().to_string(),
+            deck_id: d2,
             score: 8,
             total: 10,
             answers: vec![],
             completed_at: Utc::now(),
         };
 
-        save_test_result(&path, &r1);
-        save_test_result(&path, &r2);
+        save_test_result(&path, &r1).unwrap();
+        save_test_result(&path, &r2).unwrap();
 
-        let results = load_test_results(&path, "d1");
+        let results = load_test_results(&path, &d1).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].deck_id, "d1");
+        assert_eq!(results[0].deck_id, d1);
     }
 }

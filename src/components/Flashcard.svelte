@@ -9,7 +9,6 @@
   <div class="flashcard-inner">
     <div class="flashcard-face flashcard-front">
       <p>{front}</p>
-      <span class="flip-hint">Click to flip</span>
     </div>
     <div class="flashcard-face flashcard-back">
       <p>{back}</p>
@@ -20,7 +19,6 @@
 <style>
   .flashcard {
     perspective: 1000px;
-    cursor: pointer;
     width: 100%;
     max-width: 500px;
     height: 300px;
@@ -59,11 +57,5 @@
   .flashcard-face p {
     font-size: 20px;
     text-align: center;
-  }
-  .flip-hint {
-    position: absolute;
-    bottom: 16px;
-    color: var(--text-muted);
-    font-size: 12px;
   }
 </style>

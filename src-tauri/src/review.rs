@@ -1,7 +1,7 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::storage;
 
@@ -93,22 +93,23 @@ pub fn get_due_cards(review_state: &DeckReviewState, all_card_ids: &[String], ma
     due
 }
 
-fn review_path(data_dir: &PathBuf, deck_id: &str) -> PathBuf {
-    let dir = storage::ensure_subdir(data_dir, "reviews");
-    dir.join(format!("{}.json", deck_id))
+fn review_path(data_dir: &Path, deck_id: &str) -> Result<PathBuf, String> {
+    storage::validate_id(deck_id)?;
+    let dir = storage::ensure_subdir(data_dir, "reviews")?;
+    Ok(dir.join(format!("{}.json", deck_id)))
 }
 
-pub fn load_review_state(data_dir: &PathBuf, deck_id: &str) -> DeckReviewState {
-    let path = review_path(data_dir, deck_id);
-    storage::read_json(&path).unwrap_or_else(|| DeckReviewState {
+pub fn load_review_state(data_dir: &Path, deck_id: &str) -> Result<DeckReviewState, String> {
+    let path = review_path(data_dir, deck_id)?;
+    Ok(storage::read_json(&path).unwrap_or_else(|| DeckReviewState {
         deck_id: deck_id.to_string(),
         cards: HashMap::new(),
-    })
+    }))
 }
 
-pub fn save_review_state(data_dir: &PathBuf, state: &DeckReviewState) {
-    let path = review_path(data_dir, &state.deck_id);
-    storage::write_json(&path, state);
+pub fn save_review_state(data_dir: &Path, state: &DeckReviewState) -> Result<(), String> {
+    let path = review_path(data_dir, &state.deck_id)?;
+    storage::write_json(&path, state)
 }
 
 #[cfg(test)]
@@ -222,14 +223,15 @@ mod tests {
     fn test_save_and_load_review_state() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().to_path_buf();
+        let deck_id = uuid::Uuid::new_v4().to_string();
         let mut state = DeckReviewState {
-            deck_id: "deck1".to_string(),
+            deck_id: deck_id.clone(),
             cards: HashMap::new(),
         };
         state.cards.insert("c1".to_string(), CardReviewState::default());
 
-        save_review_state(&path, &state);
-        let loaded = load_review_state(&path, "deck1");
+        save_review_state(&path, &state).unwrap();
+        let loaded = load_review_state(&path, &deck_id).unwrap();
         assert_eq!(loaded.cards.len(), 1);
         assert!(loaded.cards.contains_key("c1"));
     }
@@ -238,8 +240,9 @@ mod tests {
     fn test_load_missing_review_returns_empty() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().to_path_buf();
-        let state = load_review_state(&path, "nonexistent");
-        assert_eq!(state.deck_id, "nonexistent");
+        let deck_id = uuid::Uuid::new_v4().to_string();
+        let state = load_review_state(&path, &deck_id).unwrap();
+        assert_eq!(state.deck_id, deck_id);
         assert!(state.cards.is_empty());
     }
 }
