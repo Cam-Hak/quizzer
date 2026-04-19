@@ -176,11 +176,21 @@
   .test-setup, .test-results {
     max-width: 600px;
   }
+  .test-setup h2, .test-results h2 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
   .setup-form {
     display: flex;
     flex-direction: column;
     gap: 16px;
     margin-top: 24px;
+    padding: 24px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
   }
   .setup-form label {
     display: flex;
@@ -188,68 +198,46 @@
     gap: 4px;
   }
   .setup-form label span {
-    font-size: 13px;
-    color: var(--text-secondary);
-  }
-  select {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-primary);
-    padding: 8px 12px;
-    font-size: 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
   }
   .test-progress {
     color: var(--text-secondary);
     font-size: 14px;
     margin-bottom: 24px;
+    font-variant-numeric: tabular-nums;
   }
+  /* question-card max-width override (base styles are global) */
   .question-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 32px;
     max-width: 600px;
-  }
-  .question-card h3 {
-    margin-bottom: 24px;
-    font-size: 18px;
-  }
-  .mc-options {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .mc-option {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    padding: 12px 16px;
-    text-align: left;
-    font-size: 14px;
-    border: 1px solid var(--border);
-  }
-  .mc-option:hover {
-    border-color: var(--accent);
-    background: var(--bg-primary);
-  }
-  .written-form {
-    display: flex;
-    gap: 8px;
   }
   .score {
     display: flex;
     flex-direction: column;
     align-items: center;
     margin: 32px 0;
+    padding: 32px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
   }
   .score-value {
-    font-size: 48px;
-    font-weight: 700;
-    color: var(--accent);
+    font-size: 56px;
+    font-weight: 800;
+    line-height: 1;
+    background: var(--gradient-accent);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
   .score-detail {
     color: var(--text-secondary);
-    margin-top: 4px;
+    margin-top: 8px;
+    font-size: 15px;
   }
   .review-list {
     display: flex;
@@ -258,25 +246,30 @@
     margin: 16px 0 24px;
   }
   .review-item {
-    padding: 12px;
+    padding: 12px 16px;
     background: var(--bg-secondary);
     border-radius: var(--radius);
     border: 1px solid var(--border);
+    transition: border-color var(--transition-fast);
   }
   .review-item.incorrect {
-    border-color: var(--danger);
+    border-color: rgba(239,68,68,0.4);
+    background: rgba(239,68,68,0.03);
   }
   .review-question {
     font-size: 14px;
+    font-weight: 500;
     margin-bottom: 4px;
   }
   .correct-badge {
     color: var(--success);
     font-size: 13px;
+    font-weight: 500;
   }
   .wrong-badge {
     color: var(--danger);
     font-size: 13px;
+    font-weight: 500;
   }
   .correct-answer {
     color: var(--success);

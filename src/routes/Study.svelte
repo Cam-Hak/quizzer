@@ -348,7 +348,7 @@
     color: var(--text-secondary);
   }
 
-  /* Card chips — overview of all cards */
+  /* Card chips */
   .card-chips {
     display: flex;
     gap: 6px;
@@ -358,32 +358,28 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+    transition: background var(--transition-slow), transform var(--transition-slow), box-shadow var(--transition-slow);
   }
   .chip-active {
     transform: scale(1.4);
   }
   .chip-0 {
-    background: var(--bg-tertiary);
+    background: var(--level-0-bg);
     border: 1px solid var(--border);
   }
   .chip-1 {
-    background: #60a5fa;
+    background: var(--chip-1);
   }
   .chip-2 {
-    background: #fbbf24;
+    background: var(--chip-2);
   }
   .chip-learned {
     background: var(--success);
-    box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+    box-shadow: var(--shadow-glow-success);
   }
 
-  /* Question card */
+  /* Question card — width override (base styles are global) */
   .question-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 32px;
     width: 100%;
   }
   .question-meta {
@@ -401,23 +397,23 @@
     letter-spacing: 0.5px;
   }
   .level-0 {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
+    background: var(--level-0-bg);
+    color: var(--level-0-text);
   }
   .level-1 {
-    background: #1a3a5c;
-    color: #60a5fa;
+    background: var(--level-1-bg);
+    color: var(--level-1-text);
   }
   .level-2 {
-    background: #1a3c2a;
-    color: #4ade80;
+    background: var(--level-2-bg);
+    color: var(--level-2-text);
   }
   .question-type-label {
     font-size: 12px;
     color: var(--text-muted);
   }
 
-  /* Level steps — 3 dots showing progress toward learned */
+  /* Level steps */
   .level-steps {
     display: flex;
     align-items: center;
@@ -430,11 +426,12 @@
     border-radius: 3px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    transition: background 0.3s, border-color 0.3s;
+    transition: background var(--transition-slow), border-color var(--transition-slow), box-shadow var(--transition-slow);
   }
   .level-step.step-done {
     background: var(--success);
     border-color: var(--success);
+    box-shadow: 0 0 6px rgba(52, 211, 153, 0.3);
   }
   .level-step.step-current {
     background: var(--bg-tertiary);
@@ -444,53 +441,7 @@
     font-size: 11px;
     color: var(--text-muted);
     margin-left: 4px;
-  }
-
-  .question-card h3 {
-    margin-bottom: 24px;
-    font-size: 18px;
-  }
-
-  /* MC options */
-  .mc-options {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .mc-option {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    padding: 12px 16px;
-    text-align: left;
-    font-size: 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
-  }
-  .mc-option:hover:not(.disabled) {
-    border-color: var(--accent);
-    background: var(--bg-primary);
-  }
-  .mc-option.disabled {
-    cursor: default;
-    opacity: 0.7;
-  }
-  .mc-option.option-correct {
-    border-color: var(--success);
-    background: rgba(74, 222, 128, 0.1);
-    opacity: 1;
-  }
-  .mc-option.option-selected-wrong {
-    border-color: var(--danger);
-    background: rgba(239, 68, 68, 0.1);
-    opacity: 1;
-  }
-  .mc-option.option-dim {
-    opacity: 0.35;
-  }
-  .written-form {
-    display: flex;
-    gap: 8px;
+    font-variant-numeric: tabular-nums;
   }
 
   /* Feedback */
@@ -498,6 +449,15 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+  .feedback.correct {
+    border-left: 3px solid var(--success);
+    padding-left: 16px;
+  }
+  .feedback.incorrect {
+    border-left: 3px solid var(--danger);
+    padding-left: 16px;
+    animation: shake 0.4s ease-out;
   }
   .feedback-text {
     font-size: 16px;
@@ -522,9 +482,6 @@
     color: var(--text-muted);
     font-style: italic;
   }
-  .feedback-options {
-    margin-top: 4px;
-  }
   .continue-btn {
     margin-top: 8px;
     align-self: flex-start;
@@ -540,15 +497,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    background: var(--success);
+    background: var(--gradient-success);
     color: #000;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     flex-shrink: 0;
-    animation: pop-in 0.3s ease-out;
+    animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: var(--shadow-glow-success);
   }
   .learned-text {
     font-size: 20px !important;
@@ -564,9 +522,9 @@
   }
 
   @keyframes pop-in {
-    0% { transform: scale(0); }
-    70% { transform: scale(1.2); }
-    100% { transform: scale(1); }
+    0% { transform: scale(0); opacity: 0; }
+    60% { transform: scale(1.3); }
+    100% { transform: scale(1); opacity: 1; }
   }
 
   /* Session summary */
@@ -581,7 +539,7 @@
   }
   .stats {
     display: flex;
-    gap: 48px;
+    gap: 32px;
     justify-content: center;
     margin-top: 32px;
   }
@@ -589,11 +547,20 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    min-width: 100px;
+    box-shadow: var(--shadow-sm);
   }
   .stat-value {
     font-size: 36px;
     font-weight: 700;
-    color: var(--accent);
+    background: var(--gradient-accent);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
   .stat-label {
     color: var(--text-secondary);

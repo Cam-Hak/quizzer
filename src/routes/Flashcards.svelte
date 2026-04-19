@@ -116,6 +116,8 @@
   }
   .flashcards-header h2 {
     margin: 0;
+    font-weight: 700;
+    letter-spacing: -0.3px;
   }
   .shuffle-btn {
     font-size: 13px;
@@ -123,21 +125,32 @@
     background: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: var(--radius-full);
+    transition: all var(--transition-fast);
+  }
+  .shuffle-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
   }
   .shuffle-btn.active {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
+    background: var(--gradient-accent);
+    color: #09090b;
+    border-color: transparent;
+    box-shadow: var(--shadow-glow-accent);
   }
   .progress {
     color: var(--text-secondary);
     font-size: 14px;
+    font-variant-numeric: tabular-nums;
   }
   .card-area {
     cursor: pointer;
     width: 100%;
     max-width: 500px;
+    transition: transform var(--transition-fast);
+  }
+  .card-area:hover {
+    transform: scale(1.01);
   }
   .nav-buttons {
     display: flex;

@@ -28,7 +28,7 @@
     position: relative;
     width: 100%;
     height: 100%;
-    transition: transform 0.5s;
+    transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
     transform-style: preserve-3d;
   }
   .flipped .flashcard-inner {
@@ -44,19 +44,22 @@
     align-items: center;
     justify-content: center;
     padding: 32px;
-    border-radius: var(--radius-lg);
-    outline: 1px solid var(--border);
-    outline-offset: -1px;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--bg-glass-border);
+    box-shadow: var(--shadow-lg);
   }
   .flashcard-front {
     background: var(--bg-secondary);
+    background-image: var(--gradient-surface);
   }
   .flashcard-back {
     background: var(--bg-tertiary);
+    background-image: var(--gradient-surface);
     transform: rotateY(180deg);
   }
   .flashcard-face p {
     font-size: 20px;
     text-align: center;
+    line-height: 1.5;
   }
 </style>

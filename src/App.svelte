@@ -18,6 +18,7 @@
 <div class="app-layout">
   <nav class="sidebar">
     <h1>Quizard</h1>
+    <div class="sidebar-divider"></div>
     <button class:active={$currentView === "home"} onclick={() => navigate("home")}>
       Home
     </button>

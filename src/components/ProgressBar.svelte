@@ -10,23 +10,37 @@
 
 <style>
   .progress-bar {
-    background: var(--bg-tertiary);
-    border-radius: 4px;
+    background: rgba(39,39,42,0.5);
+    border-radius: var(--radius-full);
     height: 8px;
     position: relative;
     overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.03);
   }
   .progress-fill {
-    background: var(--accent);
+    background: var(--gradient-accent);
     height: 100%;
-    border-radius: 4px;
-    transition: width 0.3s;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-slow);
+    position: relative;
+  }
+  .progress-fill::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: -2px;
+    bottom: -2px;
+    width: 8px;
+    background: rgba(245,158,11,0.6);
+    border-radius: 50%;
+    filter: blur(4px);
   }
   .progress-label {
     position: absolute;
     right: 0;
-    top: 12px;
+    top: 14px;
     font-size: 11px;
     color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
   }
 </style>

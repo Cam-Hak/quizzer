@@ -81,11 +81,21 @@
     align-items: center;
     margin-bottom: 24px;
   }
+  .home-header h2 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
   .create-form {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     margin-bottom: 24px;
     align-items: center;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
   }
   .create-form input {
     max-width: 300px;
@@ -94,6 +104,11 @@
     color: var(--text-muted);
     margin-top: 40px;
     text-align: center;
+    font-size: 15px;
+    padding: 48px 16px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+    background: rgba(24,24,27,0.5);
   }
   .deck-grid {
     display: grid;

@@ -3,3 +3,5 @@ dist/
 target/
 .superpowers/
 .DS_Store
+*.env
+*.env.*
