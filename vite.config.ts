@@ -8,6 +8,9 @@ export default defineConfig({
   resolve: {
     alias: {
       $lib: path.resolve("./src/lib"),
+      ...(process.env.TAURI_ENV_PLATFORM
+        ? {}
+        : { "@tauri-apps/api/core": path.resolve("./src/lib/mock-invoke-shim.ts") }),
     },
   },
   server: {
