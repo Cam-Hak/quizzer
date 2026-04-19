@@ -2,6 +2,7 @@
 
 mod storage;
 mod decks;
+mod review;
 
 fn main() {
     tauri::Builder::default()
