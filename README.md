@@ -165,4 +165,4 @@ quizard/
 
 ## License
 
-License not yet specified.
+[MIT](LICENSE)
