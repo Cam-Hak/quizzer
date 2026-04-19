@@ -97,6 +97,7 @@ pub fn generate_questions(
 
 pub fn save_test_result(data_dir: &Path, result: &TestResult) -> Result<(), String> {
     storage::validate_id(&result.id)?;
+    storage::validate_id(&result.deck_id)?;
     let dir = storage::ensure_subdir(data_dir, "tests")?;
     let path = dir.join(format!("{}.json", result.id));
     storage::write_json(&path, result)

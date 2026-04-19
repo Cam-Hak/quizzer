@@ -51,7 +51,10 @@ pub fn process_rating(state: &mut CardReviewState, rating: u8) {
         match state.repetitions {
             0 => state.interval_days = 1,
             1 => state.interval_days = 6,
-            _ => state.interval_days = (state.interval_days as f64 * state.ease_factor).round() as i64,
+            _ => {
+                state.interval_days = (state.interval_days as f64 * state.ease_factor).round() as i64;
+                state.interval_days = state.interval_days.clamp(1, 36500);
+            }
         }
         state.repetitions += 1;
     } else {

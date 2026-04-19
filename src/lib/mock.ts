@@ -101,6 +101,23 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
       return undefined;
     case "get_test_results":
       return mockResults.filter((r) => r.deck_id === args?.deckId);
+    case "export_deck_csv":
+      return undefined;
+    case "import_deck_csv": {
+      const importDeck: Deck = {
+        id: crypto.randomUUID(),
+        title: args?.title as string,
+        description: "",
+        cards: [
+          { id: crypto.randomUUID(), front: "Imported Q1", back: "Imported A1", created_at: new Date().toISOString() },
+          { id: crypto.randomUUID(), front: "Imported Q2", back: "Imported A2", created_at: new Date().toISOString() },
+        ],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      mockDecks.push(importDeck);
+      return clone(importDeck);
+    }
     default:
       throw new Error(`Unknown command: ${cmd}`);
   }

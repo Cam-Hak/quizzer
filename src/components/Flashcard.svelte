@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { renderMarkdown } from "$lib/markdown";
   let { front, back, flipped = false }: { front: string; back: string; flipped?: boolean } = $props();
 </script>
 
@@ -8,10 +9,10 @@
 >
   <div class="flashcard-inner">
     <div class="flashcard-face flashcard-front">
-      <p>{front}</p>
+      <div class="card-content">{@html renderMarkdown(front)}</div>
     </div>
     <div class="flashcard-face flashcard-back">
-      <p>{back}</p>
+      <div class="card-content">{@html renderMarkdown(back)}</div>
     </div>
   </div>
 </div>
@@ -57,7 +58,7 @@
     background-image: var(--gradient-surface);
     transform: rotateY(180deg);
   }
-  .flashcard-face p {
+  .flashcard-face .card-content {
     font-size: 20px;
     text-align: center;
     line-height: 1.5;

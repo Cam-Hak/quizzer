@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { currentDeck } from "$lib/stores/deckStore";
   import { api, type Question } from "$lib/tauri";
+  import { renderMarkdown } from "$lib/markdown";
+  import { getMatchingWords, highlightMatches } from "$lib/wordMatch";
   import ProgressBar from "../components/ProgressBar.svelte";
 
   interface CardProgress {
@@ -11,7 +13,7 @@
     lastAnswered: number;
   }
 
-  type Phase = "loading" | "active" | "complete";
+  type Phase = "loading" | "active" | "complete" | "error";
 
   let phase = $state<Phase>("loading");
   let cardProgress = $state<Map<string, CardProgress>>(new Map());
@@ -33,6 +35,8 @@
     selectedOption: string | null;
   } | null>(null);
 
+  let judgingState = $state<{ userAnswer: string; correctAnswer: string } | null>(null);
+
   let totalAnswered = $state(0);
   let totalCorrect = $state(0);
 
@@ -49,27 +53,34 @@
     })) ?? []
   );
 
+  let errorMsg = $state("");
+
   onMount(async () => {
     if (!$currentDeck || $currentDeck.cards.length === 0) return;
 
-    useWrittenOnly = $currentDeck.cards.length < 4;
+    try {
+      useWrittenOnly = $currentDeck.cards.length < 4;
 
-    const questions = await api.generateTest($currentDeck.id, null, "multiple_choice");
-    for (const q of questions) {
-      mcQuestions.set(q.card_id, q);
+      const questions = await api.generateTest($currentDeck.id, null, "multiple_choice");
+      for (const q of questions) {
+        mcQuestions.set(q.card_id, q);
+      }
+
+      for (const card of $currentDeck.cards) {
+        cardProgress.set(card.id, {
+          cardId: card.id,
+          level: 0,
+          wrongCount: 0,
+          lastAnswered: 0,
+        });
+      }
+
+      pickNextCard();
+      phase = "active";
+    } catch (e) {
+      errorMsg = e instanceof Error ? e.message : String(e);
+      phase = "error";
     }
-
-    for (const card of $currentDeck.cards) {
-      cardProgress.set(card.id, {
-        cardId: card.id,
-        level: 0,
-        wrongCount: 0,
-        lastAnswered: 0,
-      });
-    }
-
-    pickNextCard();
-    phase = "active";
   });
 
   function pickNextCard() {
@@ -103,6 +114,7 @@
     }
 
     feedbackState = null;
+    judgingState = null;
   }
 
   async function handleMcAnswer(selected: string) {
@@ -112,9 +124,16 @@
   }
 
   async function handleWrittenAnswer() {
-    if (feedbackState || !writtenInput.trim()) return;
-    const correct =
-      writtenInput.trim().toLowerCase() === currentCorrectAnswer.trim().toLowerCase();
+    if (feedbackState || judgingState || !writtenInput.trim()) return;
+    judgingState = {
+      userAnswer: writtenInput.trim(),
+      correctAnswer: currentCorrectAnswer,
+    };
+    writtenInput = "";
+  }
+
+  async function handleJudgment(correct: boolean) {
+    judgingState = null;
     await recordAnswer(correct, null);
   }
 
@@ -177,6 +196,32 @@
     phase = "active";
   }
 
+  function handleKey(e: KeyboardEvent) {
+    const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+    if (tag === "input" || tag === "textarea") return;
+
+    if (judgingState) {
+      if (e.key === "1") handleJudgment(true);
+      else if (e.key === "2") handleJudgment(false);
+      return;
+    }
+
+    if (feedbackState) {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        advance();
+      }
+      return;
+    }
+
+    if (currentQuestionType === "MultipleChoice" && currentOptions.length > 0) {
+      const idx = parseInt(e.key) - 1;
+      if (idx >= 0 && idx < currentOptions.length) {
+        handleMcAnswer(currentOptions[idx]);
+      }
+    }
+  }
+
   function levelLabel(level: number): string {
     if (level === 0) return "New";
     if (level === 1) return "Seen";
@@ -185,13 +230,20 @@
   }
 </script>
 
+<svelte:window onkeydown={handleKey} />
+
 {#if !$currentDeck || $currentDeck.cards.length === 0}
   <div class="empty-state">
     <h2>{$currentDeck?.title ?? "No Deck"}</h2>
     <p class="empty">No cards in this deck. Add some in the editor.</p>
   </div>
+{:else if phase === "error"}
+  <div class="error-state" role="alert">
+    <h2>Something went wrong</h2>
+    <p>{errorMsg}</p>
+  </div>
 {:else if phase === "loading"}
-  <div class="loading">
+  <div class="loading" role="status" aria-live="polite">
     <p>Loading study session...</p>
   </div>
 {:else if phase === "active" && currentCardId}
@@ -239,13 +291,32 @@
         </span>
       </div>
 
-      <h3>{currentPrompt}</h3>
+      <h3>{@html renderMarkdown(currentPrompt)}</h3>
 
-      {#if !feedbackState}
+      {#if judgingState}
+        <div class="judge-card">
+          <h4>Compare your answer</h4>
+          <div class="judge-answers">
+            <div class="judge-answer">
+              <span class="judge-label">Your answer</span>
+              <p>{@html highlightMatches(judgingState.userAnswer.split(/\s+/), getMatchingWords(judgingState.userAnswer, judgingState.correctAnswer).matching)}</p>
+            </div>
+            <div class="judge-answer">
+              <span class="judge-label">Correct answer</span>
+              <p>{judgingState.correctAnswer}</p>
+            </div>
+          </div>
+          <div class="judge-buttons">
+            <button class="primary" onclick={() => handleJudgment(true)}><span class="key-hint">1</span> I was right</button>
+            <button class="secondary" onclick={() => handleJudgment(false)}><span class="key-hint">2</span> I was wrong</button>
+          </div>
+        </div>
+      {:else if !feedbackState}
         {#if currentQuestionType === "MultipleChoice"}
           <div class="mc-options">
-            {#each currentOptions as option}
+            {#each currentOptions as option, i}
               <button class="mc-option" onclick={() => handleMcAnswer(option)}>
+                <span class="key-hint">{i + 1}</span>
                 {option}
               </button>
             {/each}
@@ -261,7 +332,7 @@
           </div>
         {/if}
       {:else}
-        <div class="feedback" class:correct={feedbackState.correct} class:incorrect={!feedbackState.correct} class:just-learned={feedbackState.justLearned}>
+        <div class="feedback" class:correct={feedbackState.correct} class:incorrect={!feedbackState.correct} class:just-learned={feedbackState.justLearned} role="status" aria-live="polite">
           {#if feedbackState.justLearned}
             <div class="learned-celebration">
               <span class="learned-check">&#10003;</span>
@@ -275,7 +346,7 @@
             </p>
           {:else}
             <p class="feedback-text">Incorrect</p>
-            <p class="correct-answer">Correct answer: {feedbackState.correctAnswer}</p>
+            <p class="correct-answer">Correct answer: {@html renderMarkdown(feedbackState.correctAnswer)}</p>
             <p class="reset-msg">Reset to start — you'll see this one again</p>
           {/if}
 
@@ -582,5 +653,49 @@
     text-align: center;
     padding-top: 64px;
     color: var(--text-secondary);
+  }
+  .error-state {
+    text-align: center;
+    padding-top: 64px;
+    color: var(--danger);
+  }
+  .error-state p {
+    color: var(--text-secondary);
+    margin-top: 8px;
+  }
+
+  /* Judging UI */
+  .judge-card h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .judge-answers {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .judge-answer {
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+  }
+  .judge-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .judge-answer p {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .judge-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
   }
 </style>

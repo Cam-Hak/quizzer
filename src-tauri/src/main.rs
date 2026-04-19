@@ -121,8 +121,19 @@ fn get_test_results(app: tauri::AppHandle, deck_id: String) -> Result<Vec<quiz::
     quiz::load_test_results(&get_data_dir(&app)?, &deck_id)
 }
 
+#[tauri::command]
+fn export_deck_csv(app: tauri::AppHandle, deck_id: String, file_path: String) -> Result<(), String> {
+    decks::export_deck_csv(&get_data_dir(&app)?, &deck_id, &file_path)
+}
+
+#[tauri::command]
+fn import_deck_csv(app: tauri::AppHandle, file_path: String, title: String) -> Result<decks::Deck, String> {
+    decks::import_deck_csv(&get_data_dir(&app)?, &file_path, title)
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_decks,
             get_deck,
@@ -137,6 +148,8 @@ fn main() {
             generate_test,
             save_test_result,
             get_test_results,
+            export_deck_csv,
+            import_deck_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

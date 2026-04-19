@@ -75,4 +75,8 @@ export const api = {
     invoke<void>("save_test_result", { result }),
   getTestResults: (deckId: string) =>
     invoke<TestResult[]>("get_test_results", { deckId }),
+  exportDeckCsv: (deckId: string, filePath: string) =>
+    invoke<void>("export_deck_csv", { deckId, filePath }),
+  importDeckCsv: (filePath: string, title: string) =>
+    invoke<Deck>("import_deck_csv", { filePath, title }),
 };

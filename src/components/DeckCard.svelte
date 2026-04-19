@@ -14,25 +14,23 @@
     ondelete: () => void;
   } = $props();
 
-  let mastered = $derived(() => {
-    if (!reviewState || deck.cards.length === 0) return 0;
-    const learned = Object.values(reviewState.cards).filter(
-      (c) => c.repetitions >= 3
-    ).length;
-    return learned;
-  });
+  let mastered = $derived(
+    (!reviewState || deck.cards.length === 0)
+      ? 0
+      : Object.values(reviewState.cards).filter((c) => c.repetitions >= 3).length
+  );
 </script>
 
-<div class="deck-card" onclick={onselect} onkeydown={(e) => e.key === "Enter" && onselect()} role="button" tabindex="0">
+<div class="deck-card" onclick={onselect} onkeydown={(e) => e.key === "Enter" && onselect()} role="button" tabindex="0" aria-label="Open {deck.title}">
   <div class="deck-header">
     <h3>{deck.title}</h3>
-    <button class="delete-btn" onclick={(e) => { e.stopPropagation(); ondelete(); }}>×</button>
+    <button class="delete-btn" aria-label="Delete {deck.title}" onclick={(e) => { e.stopPropagation(); ondelete(); }}>×</button>
   </div>
   {#if deck.description}
     <p class="deck-desc">{deck.description}</p>
   {/if}
   <p class="card-count">{deck.cards.length} card{deck.cards.length !== 1 ? "s" : ""}</p>
-  <ProgressBar value={mastered()} max={deck.cards.length} />
+  <ProgressBar value={mastered} max={deck.cards.length} />
 </div>
 
 <style>

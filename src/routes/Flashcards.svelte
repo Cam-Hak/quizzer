@@ -50,7 +50,19 @@
   }
 
   let currentCard = $derived(cards[currentIndex] ?? null);
+
+  function handleKey(e: KeyboardEvent) {
+    if (!currentCard) return;
+    if (e.key === "ArrowLeft") prev();
+    else if (e.key === "ArrowRight") next();
+    else if (e.key === " ") {
+      e.preventDefault();
+      flip();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKey} />
 
 {#if !$currentDeck}
   <p>No deck selected.</p>
@@ -76,7 +88,7 @@
       {currentIndex + 1} / {cards.length}
     </div>
 
-    <div class="card-area" role="button" tabindex="0" onclick={flip} onkeydown={(e) => e.key === "Enter" && flip()}>
+    <div class="card-area" role="button" tabindex="0" aria-label="Flashcard — click or press Space to flip" onclick={flip} onkeydown={(e) => e.key === "Enter" && flip()}>
       <Flashcard
         front={currentCard.front}
         back={currentCard.back}

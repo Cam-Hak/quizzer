@@ -29,7 +29,9 @@ pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
 
 pub fn write_json<T: serde::Serialize>(path: &Path, data: &T) -> Result<(), String> {
     let content = serde_json::to_string_pretty(data).map_err(|e| format!("failed to serialize: {}", e))?;
-    fs::write(path, content).map_err(|e| format!("failed to write file: {}", e))
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, &content).map_err(|e| format!("failed to write temp file: {}", e))?;
+    fs::rename(&tmp, path).map_err(|e| format!("failed to rename temp file: {}", e))
 }
 
 pub fn list_json_files(dir: &Path) -> Vec<PathBuf> {

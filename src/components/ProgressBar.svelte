@@ -3,7 +3,7 @@
   let percentage = $derived(max > 0 ? Math.round((value / max) * 100) : 0);
 </script>
 
-<div class="progress-bar">
+<div class="progress-bar" role="progressbar" aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100} aria-label="Progress">
   <div class="progress-fill" style="width: {percentage}%"></div>
   <span class="progress-label">{percentage}%</span>
 </div>

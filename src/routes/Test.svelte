@@ -1,6 +1,8 @@
 <script lang="ts">
   import { currentDeck } from "$lib/stores/deckStore";
   import { api, type Question, type TestAnswer, type TestResult } from "$lib/tauri";
+  import { renderMarkdown } from "$lib/markdown";
+  import { getMatchingWords, highlightMatches } from "$lib/wordMatch";
 
   type Phase = "setup" | "active" | "results";
 
@@ -14,6 +16,7 @@
   let result = $state<TestResult | null>(null);
 
   let currentQuestion = $derived(questions[currentIndex] ?? null);
+  let judgingState = $state<{ userAnswer: string; correctAnswer: string } | null>(null);
 
   function initCount() {
     questionCount = $currentDeck?.cards.length ?? 0;
@@ -23,17 +26,23 @@
     if ($currentDeck) initCount();
   });
 
+  let errorMsg = $state("");
+
   async function startTest() {
     if (!$currentDeck) return;
-    questions = await api.generateTest(
-      $currentDeck.id,
-      questionCount > 0 ? questionCount : null,
-      questionType
-    );
-    if (questions.length === 0) return;
-    currentIndex = 0;
-    answers = [];
-    phase = "active";
+    try {
+      questions = await api.generateTest(
+        $currentDeck.id,
+        questionCount > 0 ? questionCount : null,
+        questionType
+      );
+      if (questions.length === 0) return;
+      currentIndex = 0;
+      answers = [];
+      phase = "active";
+    } catch (e) {
+      errorMsg = e instanceof Error ? e.message : String(e);
+    }
   }
 
   function submitMcAnswer(selected: string) {
@@ -47,16 +56,22 @@
   }
 
   function submitWrittenAnswer() {
+    if (!currentQuestion || judgingState) return;
+    judgingState = {
+      userAnswer: writtenInput.trim(),
+      correctAnswer: currentQuestion.correct_answer,
+    };
+    writtenInput = "";
+  }
+
+  function handleTestJudgment(correct: boolean) {
     if (!currentQuestion) return;
-    const isCorrect =
-      writtenInput.trim().toLowerCase() ===
-      currentQuestion.correct_answer.trim().toLowerCase();
     answers.push({
       card_id: currentQuestion.card_id,
-      correct: isCorrect,
-      given_answer: writtenInput.trim(),
+      correct,
+      given_answer: judgingState!.userAnswer,
     });
-    writtenInput = "";
+    judgingState = null;
     advance();
   }
 
@@ -88,7 +103,28 @@
     phase = "setup";
     result = null;
   }
+
+  function handleKey(e: KeyboardEvent) {
+    if (phase !== "active" || !currentQuestion) return;
+    const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+    if (tag === "input" || tag === "textarea") return;
+
+    if (judgingState) {
+      if (e.key === "1") handleTestJudgment(true);
+      else if (e.key === "2") handleTestJudgment(false);
+      return;
+    }
+
+    if (currentQuestion.question_type === "MultipleChoice" && currentQuestion.options) {
+      const idx = parseInt(e.key) - 1;
+      if (idx >= 0 && idx < currentQuestion.options.length) {
+        submitMcAnswer(currentQuestion.options[idx]);
+      }
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleKey} />
 
 {#if !$currentDeck}
   <p>No deck selected.</p>
@@ -113,6 +149,9 @@
       {#if $currentDeck.cards.length === 0}
         <p class="empty">Add cards to this deck first.</p>
       {/if}
+      {#if errorMsg}
+        <p class="error-msg" role="alert">{errorMsg}</p>
+      {/if}
     </div>
   </div>
 {:else if phase === "active" && currentQuestion}
@@ -121,12 +160,31 @@
       Question {currentIndex + 1} of {questions.length}
     </div>
     <div class="question-card">
-      <h3>{currentQuestion.prompt}</h3>
+      <h3>{@html renderMarkdown(currentQuestion.prompt)}</h3>
 
-      {#if currentQuestion.question_type === "MultipleChoice" && currentQuestion.options}
+      {#if judgingState}
+        <div class="judge-card">
+          <h4>Compare your answer</h4>
+          <div class="judge-answers">
+            <div class="judge-answer">
+              <span class="judge-label">Your answer</span>
+              <p>{@html highlightMatches(judgingState.userAnswer.split(/\s+/), getMatchingWords(judgingState.userAnswer, judgingState.correctAnswer).matching)}</p>
+            </div>
+            <div class="judge-answer">
+              <span class="judge-label">Correct answer</span>
+              <p>{judgingState.correctAnswer}</p>
+            </div>
+          </div>
+          <div class="judge-buttons">
+            <button class="primary" onclick={() => handleTestJudgment(true)}><span class="key-hint">1</span> I was right</button>
+            <button class="secondary" onclick={() => handleTestJudgment(false)}><span class="key-hint">2</span> I was wrong</button>
+          </div>
+        </div>
+      {:else if currentQuestion.question_type === "MultipleChoice" && currentQuestion.options}
         <div class="mc-options">
-          {#each currentQuestion.options as option}
+          {#each currentQuestion.options as option, i}
             <button class="mc-option" onclick={() => submitMcAnswer(option)}>
+              <span class="key-hint">{i + 1}</span>
               {option}
             </button>
           {/each}
@@ -155,7 +213,7 @@
     <div class="review-list">
       {#each result.answers as answer, i}
         <div class="review-item" class:incorrect={!answer.correct}>
-          <div class="review-question">{questions[i].prompt}</div>
+          <div class="review-question">{@html renderMarkdown(questions[i].prompt)}</div>
           <div class="review-answer">
             {#if answer.correct}
               <span class="correct-badge">✓ {answer.given_answer}</span>
@@ -278,5 +336,44 @@
   }
   .empty {
     color: var(--text-muted);
+  }
+  .error-msg {
+    color: var(--danger);
+    font-size: 13px;
+  }
+
+  /* Judging UI */
+  .judge-card h4 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .judge-answers {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .judge-answer {
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+  }
+  .judge-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .judge-answer p {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .judge-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
   }
 </style>

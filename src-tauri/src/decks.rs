@@ -103,6 +103,84 @@ pub fn delete_deck(data_dir: &Path, deck_id: &str) -> Result<bool, String> {
     Ok(storage::delete_json(&path))
 }
 
+fn validate_csv_path(file_path: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(file_path);
+    let resolve = if path.exists() {
+        path.canonicalize().map_err(|e| format!("invalid path: {}", e))?
+    } else {
+        path.parent()
+            .and_then(|p| p.canonicalize().ok())
+            .map(|p| p.join(path.file_name().unwrap_or_default()))
+            .unwrap_or_else(|| path.clone())
+    };
+    let home = dirs::home_dir().ok_or("cannot determine home directory")?;
+    let allowed = [
+        home,
+        std::env::temp_dir().canonicalize().unwrap_or_else(|_| std::env::temp_dir()),
+    ];
+    if !allowed.iter().any(|a| resolve.starts_with(a)) {
+        return Err("file path must be within home or temp directory".to_string());
+    }
+    Ok(resolve)
+}
+
+pub fn export_deck_csv(data_dir: &Path, deck_id: &str, file_path: &str) -> Result<(), String> {
+    validate_csv_path(file_path)?;
+    let deck = load_deck(data_dir, deck_id)?
+        .ok_or_else(|| format!("deck not found: {}", deck_id))?;
+    let mut wtr = csv::Writer::from_path(file_path)
+        .map_err(|e| format!("failed to open file for writing: {}", e))?;
+    wtr.write_record(["front", "back"])
+        .map_err(|e| format!("failed to write header: {}", e))?;
+    for card in &deck.cards {
+        wtr.write_record([&card.front, &card.back])
+            .map_err(|e| format!("failed to write card: {}", e))?;
+    }
+    wtr.flush().map_err(|e| format!("failed to flush: {}", e))?;
+    Ok(())
+}
+
+pub fn import_deck_csv(data_dir: &Path, file_path: &str, title: String) -> Result<Deck, String> {
+    validate_csv_path(file_path)?;
+    let content = std::fs::read_to_string(file_path)
+        .map_err(|e| format!("failed to read file: {}", e))?;
+
+    let delimiter = if content.lines().next().unwrap_or("").contains('\t') { b'\t' } else { b',' };
+
+    let mut rdr = csv::ReaderBuilder::new()
+        .delimiter(delimiter)
+        .has_headers(false)
+        .from_reader(content.as_bytes());
+
+    let mut deck = Deck::new(title, String::new());
+    let mut first = true;
+
+    for result in rdr.records() {
+        let record = result.map_err(|e| format!("failed to parse row: {}", e))?;
+        if record.len() < 2 { continue; }
+
+        let col0 = record[0].trim();
+        let col1 = record[1].trim();
+
+        if first {
+            first = false;
+            let c0 = col0.to_lowercase();
+            let c1 = col1.to_lowercase();
+            if (c0 == "front" || c0 == "term" || c0 == "question")
+                && (c1 == "back" || c1 == "definition" || c1 == "answer")
+            {
+                continue;
+            }
+        }
+
+        if col0.is_empty() && col1.is_empty() { continue; }
+        deck.add_card(col0.to_string(), col1.to_string());
+    }
+
+    save_deck(data_dir, &deck)?;
+    Ok(deck)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,5 +260,48 @@ mod tests {
         let (_dir, path) = test_dir();
         assert!(load_deck(&path, "../../../etc/passwd").is_err());
         assert!(delete_deck(&path, "../../malicious").is_err());
+    }
+
+    #[test]
+    fn test_export_and_import_csv() {
+        let (_dir, path) = test_dir();
+        let mut deck = Deck::new("Export Test".to_string(), "".to_string());
+        deck.add_card("What is H2O?".to_string(), "Water".to_string());
+        deck.add_card("What is NaCl?".to_string(), "Salt".to_string());
+        save_deck(&path, &deck).unwrap();
+
+        let csv_path = _dir.path().join("export.csv");
+        export_deck_csv(&path, &deck.id, csv_path.to_str().unwrap()).unwrap();
+
+        let imported = import_deck_csv(&path, csv_path.to_str().unwrap(), "Imported".to_string()).unwrap();
+        assert_eq!(imported.title, "Imported");
+        assert_eq!(imported.cards.len(), 2);
+        assert_eq!(imported.cards[0].front, "What is H2O?");
+        assert_eq!(imported.cards[0].back, "Water");
+        assert_eq!(imported.cards[1].front, "What is NaCl?");
+        assert_eq!(imported.cards[1].back, "Salt");
+    }
+
+    #[test]
+    fn test_import_csv_skips_header() {
+        let (_dir, path) = test_dir();
+        let csv_path = _dir.path().join("with_header.csv");
+        std::fs::write(&csv_path, "front,back\nQ1,A1\nQ2,A2\n").unwrap();
+
+        let deck = import_deck_csv(&path, csv_path.to_str().unwrap(), "Header Test".to_string()).unwrap();
+        assert_eq!(deck.cards.len(), 2);
+        assert_eq!(deck.cards[0].front, "Q1");
+    }
+
+    #[test]
+    fn test_import_tsv() {
+        let (_dir, path) = test_dir();
+        let tsv_path = _dir.path().join("tabs.tsv");
+        std::fs::write(&tsv_path, "term\tdefinition\nDNA\tDeoxyribonucleic acid\n").unwrap();
+
+        let deck = import_deck_csv(&path, tsv_path.to_str().unwrap(), "TSV Test".to_string()).unwrap();
+        assert_eq!(deck.cards.len(), 1);
+        assert_eq!(deck.cards[0].front, "DNA");
+        assert_eq!(deck.cards[0].back, "Deoxyribonucleic acid");
     }
 }
