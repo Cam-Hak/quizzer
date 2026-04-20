@@ -132,7 +132,47 @@ test.describe("Study Mode", () => {
     }
 
     await expect(page.locator("h2")).toHaveText("Session Complete");
-    await expect(page.locator(".stat-value").first()).toBeVisible();
+    // Learned stat = 4 (all cards in the deck). The value is derived from manager.allCards.size
+    // and must be reactive against the tick counter introduced in Study.svelte.
+    await expect(page.locator(".stat-value").first()).toHaveText("4");
+  });
+
+  test("session-complete mastered and answer counts reflect actual progress", async ({ page }) => {
+    await createDeckWithCards(page, "Stats Deck", [
+      ["Capital of France?", "Paris"],
+      ["Capital of Japan?", "Tokyo"],
+    ]);
+    await page.click("text=Study");
+
+    // 2 cards × 3 correct written answers each = 6 total answers
+    for (let i = 0; i < 20; i++) {
+      const isComplete = await page.locator("h2:has-text('Session Complete')").isVisible();
+      if (isComplete) break;
+
+      const isSectionComplete = await page.locator("h2:has-text('Section')").isVisible();
+      if (isSectionComplete) {
+        await page.locator("button.primary").click();
+        continue;
+      }
+
+      const prompt = await page.locator(".question-card h3").textContent();
+      const answer = prompt?.includes("France") ? "Paris" : "Tokyo";
+      await page.fill('input[placeholder="Type your answer..."]', answer);
+      await page.locator(".written-form button").click();
+      await expect(page.locator(".judge-card")).toBeVisible();
+      await page.click("text=I was right");
+      await expect(page.locator(".feedback")).toBeVisible();
+      await page.click("text=Continue");
+    }
+
+    await expect(page.locator("h2")).toHaveText("Session Complete");
+    // Learned = totalCards (2, constant). Answers = totalAnswered: 2 cards × 3 correct = 6.
+    // Accuracy = 100% since all answers in the loop are marked correct via "I was right".
+    // Both Learned and Answers flow through tick-gated $derived — stale zeros here would
+    // indicate the reactivity fix has regressed.
+    await expect(page.locator(".stat-value").nth(0)).toHaveText("2");
+    await expect(page.locator(".stat-value").nth(1)).toHaveText("6");
+    await expect(page.locator(".stat-value").nth(2)).toHaveText("100%");
   });
 
   test("small deck uses written questions only", async ({ page }) => {
@@ -168,11 +208,97 @@ test.describe("Study Mode", () => {
         break;
       }
     }
+
+    // During feedback, the current card still displays — its correctCount must update reactively
     await expect(page.locator(".feedback-text")).toBeVisible();
+    await expect(page.locator(".level-steps-label")).toHaveText("1/3");
+    await expect(page.locator(".level-step.step-done")).toHaveCount(1);
+    await page.click("text=Continue");
+  });
+
+  test("card chip becomes chip-learned after mastery mid-section", async ({ page }) => {
+    await createDeckWithCards(page, "Chip Deck", [
+      ["Capital of France?", "Paris"],
+      ["Capital of Japan?", "Tokyo"],
+    ]);
+    await page.click("text=Study");
+
+    await expect(page.locator(".card-chip")).toHaveCount(2);
+    await expect(page.locator(".card-chip.chip-learned")).toHaveCount(0);
+    await expect(page.locator(".progress-text")).toContainText("0 of 2 mastered");
+
+    // Coupled to SectionManager.nextCard's round-robin cycling (active[cardIndex % len]):
+    // with 2 active cards and 5 sequential correct answers, the sequence is A,B,A,B,A,
+    // so card A hits correctCount=3 and masters on answer 5. If nextCard ever randomizes,
+    // this test must be rewritten.
+    for (let i = 0; i < 5; i++) {
+      const prompt = await page.locator(".question-card h3").textContent();
+      const answer = prompt?.includes("France") ? "Paris" : "Tokyo";
+      await page.fill('input[placeholder="Type your answer..."]', answer);
+      await page.locator(".written-form button").click();
+      await expect(page.locator(".judge-card")).toBeVisible();
+      await page.click("text=I was right");
+      await expect(page.locator(".feedback-text")).toBeVisible();
+      await page.click("text=Continue");
+    }
+
+    await expect(page.locator(".card-chip.chip-learned")).toHaveCount(1);
+    // sectionMastered derived (Map-backed) must also update alongside the chip
+    await expect(page.locator(".progress-text")).toContainText("1 of 2 mastered");
+  });
+
+  test("level-steps label resets after a wrong answer", async ({ page }) => {
+    await createDeckWithCards(page, "Reset Deck", [
+      ["Capital of France?", "Paris"],
+      ["Capital of Japan?", "Tokyo"],
+    ]);
+    await page.click("text=Study");
+
+    // Coupled to SectionManager.nextCard's round-robin (active[cardIndex % len]):
+    // with 2 active cards the order is A, B, A, B. We bring B to correctCount=1
+    // first so the subsequent wrong answer exercises reset-from-non-zero, not a
+    // trivial 0→0 no-op. If nextCard ever randomizes, this test must be rewritten.
+
+    // Q1: card A correct → A=1/3
+    const prompt1 = await page.locator(".question-card h3").textContent();
+    const answer1 = prompt1?.includes("France") ? "Paris" : "Tokyo";
+    await page.fill('input[placeholder="Type your answer..."]', answer1);
+    await page.locator(".written-form button").click();
+    await expect(page.locator(".judge-card")).toBeVisible();
+    await page.click("text=I was right");
+    await expect(page.locator(".level-steps-label")).toHaveText("1/3");
     await page.click("text=Continue");
 
-    // After one correct, level steps label should reflect progress on current card
-    await expect(page.locator(".level-steps-label")).toBeVisible();
+    // Q2: card B correct → B=1/3
+    const prompt2 = await page.locator(".question-card h3").textContent();
+    const answer2 = prompt2?.includes("France") ? "Paris" : "Tokyo";
+    await page.fill('input[placeholder="Type your answer..."]', answer2);
+    await page.locator(".written-form button").click();
+    await expect(page.locator(".judge-card")).toBeVisible();
+    await page.click("text=I was right");
+    await expect(page.locator(".level-steps-label")).toHaveText("1/3");
+    await page.click("text=Continue");
+
+    // Q3: card A correct → A=2/3 (advances cardIndex so Q4 lands on B)
+    const prompt3 = await page.locator(".question-card h3").textContent();
+    const answer3 = prompt3?.includes("France") ? "Paris" : "Tokyo";
+    await page.fill('input[placeholder="Type your answer..."]', answer3);
+    await page.locator(".written-form button").click();
+    await expect(page.locator(".judge-card")).toBeVisible();
+    await page.click("text=I was right");
+    await page.click("text=Continue");
+
+    // Q4: card B wrong → B resets from 1 to 0
+    const prompt4 = await page.locator(".question-card h3").textContent();
+    const wrongAnswer = prompt4?.includes("France") ? "Tokyo" : "Paris";
+    await page.fill('input[placeholder="Type your answer..."]', wrongAnswer);
+    await page.locator(".written-form button").click();
+    await expect(page.locator(".judge-card")).toBeVisible();
+    await page.click("text=I was wrong");
+    await expect(page.locator(".feedback-text")).toContainText("Incorrect");
+    // B's correctCount was 1 before — reset must propagate reactively to 0/3
+    await expect(page.locator(".level-steps-label")).toHaveText("0/3");
+    await expect(page.locator(".level-step.step-done")).toHaveCount(0);
   });
 
   test("learned celebration shows when card reaches level 3", async ({ page }) => {
@@ -249,5 +375,80 @@ test.describe("Study Mode", () => {
     await expect(page.locator("h2")).toHaveText("Session Complete");
     await page.click("text=Study Again");
     await expect(page.locator(".question-card h3")).toBeVisible();
+  });
+
+  test("study again resets session stats for the second run", async ({ page }) => {
+    await createDeckWithCards(page, "Restart Stats Deck", [
+      ["Capital of France?", "Paris"],
+      ["Capital of Japan?", "Tokyo"],
+    ]);
+    await page.click("text=Study");
+
+    // First session: 2 cards × 3 correct = 6 answers, 100% accuracy
+    for (let i = 0; i < 20; i++) {
+      const isComplete = await page.locator("h2:has-text('Session Complete')").isVisible();
+      if (isComplete) break;
+
+      const isSectionComplete = await page.locator("h2:has-text('Section')").isVisible();
+      if (isSectionComplete) {
+        await page.locator("button.primary").click();
+        continue;
+      }
+
+      const prompt = await page.locator(".question-card h3").textContent();
+      const answer = prompt?.includes("France") ? "Paris" : "Tokyo";
+      await page.fill('input[placeholder="Type your answer..."]', answer);
+      await page.locator(".written-form button").click();
+      await expect(page.locator(".judge-card")).toBeVisible();
+      await page.click("text=I was right");
+      await expect(page.locator(".feedback")).toBeVisible();
+      await page.click("text=Continue");
+    }
+
+    await expect(page.locator("h2")).toHaveText("Session Complete");
+    await expect(page.locator(".stat-value").nth(1)).toHaveText("6");
+
+    await page.click("text=Study Again");
+    await expect(page.locator(".question-card h3")).toBeVisible();
+
+    // Second session: answer first question wrong, then complete correctly.
+    // Round-robin order A,B,A,B gives: wrong A, correct B,A,B,A,B,A = 7 answers.
+    const firstPrompt = await page.locator(".question-card h3").textContent();
+    const firstWrong = firstPrompt?.includes("France") ? "Tokyo" : "Paris";
+    await page.fill('input[placeholder="Type your answer..."]', firstWrong);
+    await page.locator(".written-form button").click();
+    await expect(page.locator(".judge-card")).toBeVisible();
+    await page.click("text=I was wrong");
+    await expect(page.locator(".feedback-text")).toContainText("Incorrect");
+    await page.click("text=Continue");
+
+    for (let i = 0; i < 20; i++) {
+      const isComplete = await page.locator("h2:has-text('Session Complete')").isVisible();
+      if (isComplete) break;
+
+      const isSectionComplete = await page.locator("h2:has-text('Section')").isVisible();
+      if (isSectionComplete) {
+        await page.locator("button.primary").click();
+        continue;
+      }
+
+      const prompt = await page.locator(".question-card h3").textContent();
+      const answer = prompt?.includes("France") ? "Paris" : "Tokyo";
+      await page.fill('input[placeholder="Type your answer..."]', answer);
+      await page.locator(".written-form button").click();
+      await expect(page.locator(".judge-card")).toBeVisible();
+      await page.click("text=I was right");
+      await expect(page.locator(".feedback")).toBeVisible();
+      await page.click("text=Continue");
+    }
+
+    await expect(page.locator("h2")).toHaveText("Session Complete");
+    // Stats must reflect ONLY the second session (not stale values from the first,
+    // not an accumulated sum). If studyAgain drops the tick++ bump, the tick-gated
+    // deriveds would keep rendering the previous manager's snapshot.
+    // Session 2 alone: 1 wrong + 6 correct = 7 answers, 6/7 ≈ 86% accuracy.
+    await expect(page.locator(".stat-value").nth(0)).toHaveText("2");
+    await expect(page.locator(".stat-value").nth(1)).toHaveText("7");
+    await expect(page.locator(".stat-value").nth(2)).toHaveText("86%");
   });
 });

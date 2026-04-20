@@ -11,6 +11,7 @@
 
   let phase = $state<Phase>("loading");
   let manager = $state<SectionManager | null>(null);
+  let tick = $state(0);
   let mcQuestions = new Map<string, Question>();
   let useWrittenOnly = $state(false);
 
@@ -31,26 +32,53 @@
 
   let judgingState = $state<{ userAnswer: string; correctAnswer: string } | null>(null);
 
-  let sectionIndex = $derived(manager ? manager.currentSectionIndex + 1 : 0);
-  let totalSections = $derived(manager?.totalSections ?? 0);
-  let sectionMastered = $derived(
-    manager ? [...manager.sectionProgress.values()].filter((p) => p.mastered).length : 0
-  );
-  let sectionTotal = $derived(manager?.sectionCardCount ?? 0);
-  let totalCards = $derived(manager?.allCards.size ?? 0);
-  let totalAnswered = $derived(manager?.totalAnswered ?? 0);
-  let totalCorrect = $derived(manager?.totalCorrect ?? 0);
+  let sectionIndex = $derived.by(() => {
+    void tick;
+    return manager ? manager.currentSectionIndex + 1 : 0;
+  });
+  let totalSections = $derived.by(() => {
+    void tick;
+    return manager?.totalSections ?? 0;
+  });
+  let sectionMastered = $derived.by(() => {
+    void tick;
+    return manager ? [...manager.sectionProgress.values()].filter((p) => p.mastered).length : 0;
+  });
+  let sectionTotal = $derived.by(() => {
+    void tick;
+    return manager?.sectionCardCount ?? 0;
+  });
+  let totalCards = $derived.by(() => {
+    void tick;
+    return manager?.allCards.size ?? 0;
+  });
+  let totalAnswered = $derived.by(() => {
+    void tick;
+    return manager?.totalAnswered ?? 0;
+  });
+  let totalCorrect = $derived.by(() => {
+    void tick;
+    return manager?.totalCorrect ?? 0;
+  });
 
-  let sectionCardList = $derived(
-    manager
+  let sectionCardList = $derived.by(() => {
+    void tick;
+    return manager
       ? [...manager.sectionProgress.values()].map((p) => ({
           id: p.cardId,
           front: manager!.getCard(p.cardId)?.front ?? "",
           correctCount: p.correctCount,
           mastered: p.mastered,
         }))
-      : []
-  );
+      : [];
+  });
+
+  let currentProgress = $derived.by(() => {
+    void tick;
+    if (!manager || !currentCardId) return null;
+    const p = manager.sectionProgress.get(currentCardId);
+    return p ? { correctCount: p.correctCount, mastered: p.mastered } : null;
+  });
 
   let errorMsg = $state("");
 
@@ -66,6 +94,7 @@
       }
 
       manager = new SectionManager($currentDeck.cards);
+      tick++;
       pickNextCard();
       phase = "active";
     } catch (e) {
@@ -78,6 +107,7 @@
     if (!manager) return;
 
     const next = manager.nextCard();
+    tick++;
     if (!next) {
       if (manager.phase === "section-complete") {
         phase = "section-complete";
@@ -144,6 +174,7 @@
       justMastered = result.mastered;
       newCorrectCount = progress.correctCount;
     }
+    tick++;
 
     feedbackState = {
       correct,
@@ -186,6 +217,7 @@
     if (!manager) return;
 
     manager.advanceSection();
+    tick++;
 
     if (manager.phase === "complete") {
       phase = "complete";
@@ -201,6 +233,7 @@
   function studyAgain() {
     if (!$currentDeck) return;
     manager = new SectionManager($currentDeck.cards);
+    tick++;
     pickNextCard();
     phase = "active";
   }
@@ -257,7 +290,6 @@
     <p>Loading study session...</p>
   </div>
 {:else if (phase === "active" || phase === "final-review") && currentCardId}
-  {@const currentProgress = manager?.sectionProgress.get(currentCardId)}
   <div class="study-view">
     <div class="study-header">
       <div class="progress-section">

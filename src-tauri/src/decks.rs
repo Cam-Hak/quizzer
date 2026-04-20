@@ -110,30 +110,7 @@ pub fn delete_deck(data_dir: &Path, deck_id: &str) -> Result<bool, String> {
     Ok(storage::delete_json(&path))
 }
 
-fn validate_csv_path(file_path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(file_path);
-    let resolve = if path.exists() {
-        path.canonicalize().map_err(|e| format!("invalid path: {}", e))?
-    } else {
-        let resolved = path.parent()
-            .and_then(|p| p.canonicalize().ok())
-            .map(|p| p.join(path.file_name().unwrap_or_default()))
-            .ok_or_else(|| "Parent directory does not exist".to_string())?;
-        resolved
-    };
-    let home = dirs::home_dir().ok_or("cannot determine home directory")?;
-    let allowed = [
-        home,
-        std::env::temp_dir().canonicalize().unwrap_or_else(|_| std::env::temp_dir()),
-    ];
-    if !allowed.iter().any(|a| resolve.starts_with(a)) {
-        return Err("file path must be within home or temp directory".to_string());
-    }
-    Ok(resolve)
-}
-
 pub fn export_deck_csv(data_dir: &Path, deck_id: &str, file_path: &str) -> Result<(), String> {
-    validate_csv_path(file_path)?;
     let deck = load_deck(data_dir, deck_id)?
         .ok_or_else(|| format!("deck not found: {}", deck_id))?;
     let mut wtr = csv::Writer::from_path(file_path)
@@ -149,7 +126,6 @@ pub fn export_deck_csv(data_dir: &Path, deck_id: &str, file_path: &str) -> Resul
 }
 
 pub fn import_deck_csv(data_dir: &Path, file_path: &str, title: String) -> Result<Deck, String> {
-    validate_csv_path(file_path)?;
     let content = std::fs::read_to_string(file_path)
         .map_err(|e| format!("failed to read file: {}", e))?;
 
@@ -311,5 +287,28 @@ mod tests {
         assert_eq!(deck.cards.len(), 1);
         assert_eq!(deck.cards[0].front, "DNA");
         assert_eq!(deck.cards[0].back, "Deoxyribonucleic acid");
+    }
+
+    #[test]
+    fn test_import_csv_missing_file_returns_error() {
+        let (_dir, path) = test_dir();
+        let missing = _dir.path().join("no-such-dir").join("missing.csv");
+
+        let result = import_deck_csv(&path, missing.to_str().unwrap(), "X".to_string());
+        let err = result.unwrap_err();
+        assert!(err.starts_with("failed to read file"), "unexpected error: {}", err);
+    }
+
+    #[test]
+    fn test_export_csv_missing_parent_returns_error() {
+        let (_dir, path) = test_dir();
+        let mut deck = Deck::new("Exp".to_string(), "".to_string());
+        deck.add_card("Q".to_string(), "A".to_string());
+        save_deck(&path, &deck).unwrap();
+
+        let bad = _dir.path().join("no-such-dir").join("out.csv");
+        let result = export_deck_csv(&path, &deck.id, bad.to_str().unwrap());
+        let err = result.unwrap_err();
+        assert!(err.starts_with("failed to open file for writing"), "unexpected error: {}", err);
     }
 }
