@@ -142,7 +142,7 @@ export class SectionManager {
 
     if (nextCardIds.length === 0) {
       if (this.struggleCardIds.size > 0) {
-        this.phase = "final-review";
+        this.startFinalReview();
       } else {
         this.phase = "complete";
       }
