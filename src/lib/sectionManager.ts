@@ -104,7 +104,7 @@ export class SectionManager {
       this.sectionCorrect++;
       progress.correctCount = Math.min(progress.correctCount + 1, 3);
     } else {
-      progress.correctCount = Math.max(progress.correctCount - 2, 0);
+      progress.correctCount = progress.correctCount >= 2 ? 1 : 0;
       progress.wrongCount++;
       this.globalWrongCounts.set(cardId, progress.wrongCount);
     }

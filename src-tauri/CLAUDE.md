@@ -16,7 +16,7 @@ Frontend calls them via `invoke()` from @tauri-apps/api/core.
 
 ## Data Directory
 
-Platform-specific app data dir (e.g. ~/Library/Application Support/com.quizard.app/).
+Platform-specific app data dir (e.g. ~/Library/Application Support/com.quizzer.app/).
 Subdirectories: data/decks/, data/reviews/, data/tests/.
 
 ## Testing

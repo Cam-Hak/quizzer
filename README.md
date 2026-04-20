@@ -1,4 +1,4 @@
-# Quizard
+# Quizzer
 
 A lightweight desktop flashcard app with spaced repetition and test generation. Built with Tauri v2 and Svelte 5. Runs natively on macOS, Windows, and Linux. All data stays on your machine — no account, no cloud sync.
 
@@ -13,25 +13,25 @@ Download the latest release for your platform from the [Releases](../../releases
 | Windows | `.msi` installer |
 | Linux | `.AppImage` or `.deb` |
 
-**macOS:** Open the `.dmg`, drag Quizard to Applications. The app is not code-signed, so macOS will block it. To fix this, open Terminal and run:
+**macOS:** Open the `.dmg`, drag Quizzer to Applications. The app is not code-signed, so macOS will block it. To fix this, open Terminal and run:
 
 ```bash
-xattr -cr /Applications/Quizard.app
+xattr -cr /Applications/Quizzer.app
 ```
 
 If the `.dmg` itself won't open ("damaged and can't be opened"), clear the quarantine on it first:
 
 ```bash
-xattr -d com.apple.quarantine ~/Downloads/Quizard*.dmg
+xattr -d com.apple.quarantine ~/Downloads/Quizzer*.dmg
 ```
 
 Then reopen the `.dmg` and drag the app to Applications.
 
 **Windows:** Run the `.msi` installer. If prompted about WebView2, the installer will download it automatically.
 
-**Linux:** Make the `.AppImage` executable (`chmod +x Quizard_*.AppImage`) and run it, or install the `.deb` with `sudo dpkg -i Quizard_*.deb`.
+**Linux:** Make the `.AppImage` executable (`chmod +x Quizzer_*.AppImage`) and run it, or install the `.deb` with `sudo dpkg -i Quizzer_*.deb`.
 
-After installing, Quizard appears in your dock, taskbar, or application launcher like any native app.
+After installing, Quizzer appears in your dock, taskbar, or application launcher like any native app.
 
 ## Features
 
@@ -49,9 +49,9 @@ All your decks, review state, and test results are stored locally in the platfor
 
 | Platform | Path |
 |---|---|
-| macOS | `~/Library/Application Support/com.quizard.app/data/` |
-| Windows | `%APPDATA%\com.quizard.app\data\` |
-| Linux | `~/.local/share/com.quizard.app/data/` |
+| macOS | `~/Library/Application Support/com.quizzer.app/data/` |
+| Windows | `%APPDATA%\com.quizzer.app\data\` |
+| Linux | `~/.local/share/com.quizzer.app/data/` |
 
 Subdirectories: `decks/`, `reviews/`, `tests/`. Each item is an individual `.json` file named by UUID. To back up your data, copy this directory. To reset, delete it.
 
@@ -73,7 +73,7 @@ Everything below is for contributors and developers.
 
 ```bash
 git clone <repository-url>
-cd quizard
+cd quizzer
 npm install
 ```
 
@@ -125,7 +125,7 @@ GitHub Actions builds installers for macOS (ARM + Intel), Windows, and Linux, th
 ## Project Structure
 
 ```
-quizard/
+quizzer/
 ├── src/                        # Svelte 5 frontend (TypeScript)
 │   ├── App.svelte              # Root layout and sidebar navigation
 │   ├── app.css                 # Design tokens, global styles, animations

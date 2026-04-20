@@ -50,7 +50,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Quizard ${{ github.ref_name }}"
+          releaseName: "Quizzer ${{ github.ref_name }}"
           releaseBody: "Download the installer for your platform below."
           releaseDraft: true
           prerelease: false

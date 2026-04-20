@@ -1,4 +1,4 @@
-# Quizard
+# Quizzer
 
 Lightweight cross-platform desktop flashcard app with spaced repetition and test generation.
 
