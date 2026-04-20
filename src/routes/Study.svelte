@@ -5,18 +5,12 @@
   import { renderMarkdown } from "$lib/markdown";
   import { getMatchingWords, highlightMatches } from "$lib/wordMatch";
   import ProgressBar from "../components/ProgressBar.svelte";
+  import { SectionManager, type CardSectionProgress } from "$lib/sectionManager";
 
-  interface CardProgress {
-    cardId: string;
-    level: number;
-    wrongCount: number;
-    lastAnswered: number;
-  }
-
-  type Phase = "loading" | "active" | "complete" | "error";
+  type Phase = "loading" | "active" | "section-complete" | "final-review" | "complete" | "error";
 
   let phase = $state<Phase>("loading");
-  let cardProgress = $state<Map<string, CardProgress>>(new Map());
+  let manager = $state<SectionManager | null>(null);
   let mcQuestions = $state<Map<string, Question>>(new Map());
   let useWrittenOnly = $state(false);
 
@@ -30,27 +24,32 @@
   let feedbackState = $state<{
     correct: boolean;
     correctAnswer: string;
-    newLevel: number;
-    justLearned: boolean;
+    newCorrectCount: number;
+    justMastered: boolean;
     selectedOption: string | null;
   } | null>(null);
 
   let judgingState = $state<{ userAnswer: string; correctAnswer: string } | null>(null);
 
-  let totalAnswered = $state(0);
-  let totalCorrect = $state(0);
-
-  let learnedCount = $derived(
-    [...cardProgress.values()].filter((p) => p.level >= 3).length
+  let sectionIndex = $derived(manager ? manager.currentSectionIndex + 1 : 0);
+  let totalSections = $derived(manager?.totalSections ?? 0);
+  let sectionMastered = $derived(
+    manager ? [...manager.sectionProgress.values()].filter((p) => p.mastered).length : 0
   );
-  let totalCards = $derived(cardProgress.size);
+  let sectionTotal = $derived(manager?.sectionCardCount ?? 0);
+  let totalCards = $derived(manager?.allCards.size ?? 0);
+  let totalAnswered = $derived(manager?.totalAnswered ?? 0);
+  let totalCorrect = $derived(manager?.totalCorrect ?? 0);
 
-  let cardList = $derived(
-    $currentDeck?.cards.map((c) => ({
-      id: c.id,
-      front: c.front,
-      level: cardProgress.get(c.id)?.level ?? 0,
-    })) ?? []
+  let sectionCardList = $derived(
+    manager
+      ? [...manager.sectionProgress.values()].map((p) => ({
+          id: p.cardId,
+          front: manager!.getCard(p.cardId)?.front ?? "",
+          correctCount: p.correctCount,
+          mastered: p.mastered,
+        }))
+      : []
   );
 
   let errorMsg = $state("");
@@ -66,15 +65,7 @@
         mcQuestions.set(q.card_id, q);
       }
 
-      for (const card of $currentDeck.cards) {
-        cardProgress.set(card.id, {
-          cardId: card.id,
-          level: 0,
-          wrongCount: 0,
-          lastAnswered: 0,
-        });
-      }
-
+      manager = new SectionManager($currentDeck.cards);
       pickNextCard();
       phase = "active";
     } catch (e) {
