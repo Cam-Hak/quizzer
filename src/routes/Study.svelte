@@ -386,6 +386,10 @@
     <p class="section-subtitle">{sectionTotal} cards mastered in this section</p>
     <div class="stats">
       <div class="stat">
+        <span class="stat-value">{manager.sectionCardCount}</span>
+        <span class="stat-label">Cards</span>
+      </div>
+      <div class="stat">
         <span class="stat-value">{manager.sectionAnswered}</span>
         <span class="stat-label">Answers</span>
       </div>
