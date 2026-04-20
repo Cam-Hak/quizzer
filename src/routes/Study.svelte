@@ -5,7 +5,7 @@
   import { renderMarkdown } from "$lib/markdown";
   import { getMatchingWords, highlightMatches } from "$lib/wordMatch";
   import ProgressBar from "../components/ProgressBar.svelte";
-  import { SectionManager, type CardSectionProgress } from "$lib/sectionManager";
+  import { SectionManager } from "$lib/sectionManager";
 
   type Phase = "loading" | "active" | "section-complete" | "final-review" | "complete" | "error";
 
@@ -205,6 +205,14 @@
     const tag = (document.activeElement?.tagName ?? "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
 
+    if (phase === "section-complete") {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        advanceToNextSection();
+      }
+      return;
+    }
+
     if (judgingState) {
       if (e.key === "1") handleJudgment(true);
       else if (e.key === "2") handleJudgment(false);
@@ -225,13 +233,6 @@
         handleMcAnswer(currentOptions[idx]);
       }
     }
-  }
-
-  function levelLabel(level: number): string {
-    if (level === 0) return "New";
-    if (level === 1) return "Seen";
-    if (level === 2) return "Almost";
-    return "Learned";
   }
 </script>
 
@@ -469,15 +470,12 @@
   .chip-active {
     transform: scale(1.4);
   }
-  .chip-0 {
+  .chip-new {
     background: var(--level-0-bg);
     border: 1px solid var(--border);
   }
-  .chip-1 {
+  .chip-progress {
     background: var(--chip-1);
-  }
-  .chip-2 {
-    background: var(--chip-2);
   }
   .chip-learned {
     background: var(--success);
@@ -674,6 +672,20 @@
     margin-top: 4px;
   }
   .study-again-btn {
+    margin-top: 32px;
+  }
+
+  /* Section summary */
+  .section-summary {
+    text-align: center;
+    padding-top: 64px;
+  }
+  .section-subtitle {
+    color: var(--text-secondary);
+    margin-top: 8px;
+    font-size: 15px;
+  }
+  .section-next-btn {
     margin-top: 32px;
   }
   .empty-state {
