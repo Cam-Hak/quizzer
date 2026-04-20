@@ -75,23 +75,19 @@
   });
 
   function pickNextCard() {
-    const remaining = [...cardProgress.values()].filter((p) => p.level < 3);
-    if (remaining.length === 0) {
+    if (!manager) return;
+
+    const next = manager.nextCard();
+    if (!next) {
       phase = "complete";
       return;
     }
 
-    remaining.sort((a, b) => {
-      if (a.level !== b.level) return a.level - b.level;
-      return a.lastAnswered - b.lastAnswered;
-    });
-
-    const next = remaining[0];
     currentCardId = next.cardId;
 
-    if (useWrittenOnly || next.level >= 2) {
+    if (useWrittenOnly || next.correctCount >= 2) {
       currentQuestionType = "Written";
-      const card = $currentDeck!.cards.find((c) => c.id === next.cardId)!;
+      const card = manager.getCard(next.cardId)!;
       currentPrompt = card.front;
       currentCorrectAnswer = card.back;
       currentOptions = [];
@@ -129,34 +125,33 @@
   }
 
   async function recordAnswer(correct: boolean, selectedOption: string | null) {
-    if (!currentCardId) return;
+    if (!currentCardId || !manager) return;
 
-    const progress = cardProgress.get(currentCardId)!;
-    totalAnswered++;
+    let justMastered = false;
+    let newCorrectCount = 0;
 
-    const newLevel = correct ? progress.level + 1 : 0;
-    const newWrongCount = correct ? progress.wrongCount : progress.wrongCount + 1;
-
-    if (correct) totalCorrect++;
-
-    const updated = {
-      ...progress,
-      level: newLevel,
-      wrongCount: newWrongCount,
-      lastAnswered: Date.now(),
-    };
-    cardProgress.set(currentCardId, updated);
+    if (manager.phase === "final-review") {
+      manager.recordFinalReviewAnswer(currentCardId, correct);
+      justMastered = false;
+      newCorrectCount = correct ? 1 : 0;
+    } else {
+      const result = manager.recordAnswer(currentCardId, correct);
+      const progress = manager.sectionProgress.get(currentCardId)!;
+      justMastered = result.mastered;
+      newCorrectCount = progress.correctCount;
+    }
 
     feedbackState = {
       correct,
       correctAnswer: currentCorrectAnswer,
-      newLevel: newLevel,
-      justLearned: newLevel >= 3,
+      newCorrectCount,
+      justMastered,
       selectedOption,
     };
 
-    if (newLevel >= 3 && $currentDeck) {
-      const rating = wrongCountToRating(newWrongCount);
+    if (justMastered && $currentDeck) {
+      const wrongCount = manager.globalWrongCounts.get(currentCardId) ?? 0;
+      const rating = wrongCountToRating(wrongCount);
       await api.submitRating($currentDeck.id, currentCardId, rating);
     }
   }
@@ -169,20 +164,39 @@
   }
 
   function advance() {
+    if (!manager) return;
+
+    if (manager.phase === "section-complete") {
+      phase = "section-complete";
+      return;
+    }
+    if (manager.phase === "complete") {
+      phase = "complete";
+      return;
+    }
+
     pickNextCard();
   }
 
-  function studyAgain() {
-    for (const [id] of cardProgress) {
-      cardProgress.set(id, {
-        cardId: id,
-        level: 0,
-        wrongCount: 0,
-        lastAnswered: 0,
-      });
+  function advanceToNextSection() {
+    if (!manager) return;
+
+    manager.advanceSection();
+
+    if (manager.phase === "complete") {
+      phase = "complete";
+    } else if (manager.phase === "final-review") {
+      phase = "final-review";
+      pickNextCard();
+    } else {
+      phase = "active";
+      pickNextCard();
     }
-    totalAnswered = 0;
-    totalCorrect = 0;
+  }
+
+  function studyAgain() {
+    if (!$currentDeck) return;
+    manager = new SectionManager($currentDeck.cards);
     pickNextCard();
     phase = "active";
   }
