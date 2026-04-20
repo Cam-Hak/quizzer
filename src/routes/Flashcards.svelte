@@ -96,12 +96,13 @@
       />
     </div>
 
+    {#if currentIndex === 0 && !flipped}
+      <p class="flip-hint">Click or press Space to flip</p>
+    {/if}
+
     <div class="nav-buttons">
       <button class="secondary" onclick={prev} disabled={currentIndex === 0}>
         Previous
-      </button>
-      <button class="secondary" onclick={flip}>
-        Flip
       </button>
       <button class="secondary" onclick={next} disabled={currentIndex === cards.length - 1}>
         Next
@@ -175,5 +176,11 @@
   .empty {
     color: var(--text-muted);
     margin-top: 16px;
+  }
+  .flip-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0;
+    text-align: center;
   }
 </style>
