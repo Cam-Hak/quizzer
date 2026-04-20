@@ -251,23 +251,27 @@
   <div class="loading" role="status" aria-live="polite">
     <p>Loading study session...</p>
   </div>
-{:else if phase === "active" && currentCardId}
+{:else if (phase === "active" || phase === "final-review") && currentCardId}
+  {@const currentProgress = manager?.sectionProgress.get(currentCardId)}
   <div class="study-view">
     <div class="study-header">
       <div class="progress-section">
-        <span class="progress-text">{learnedCount} of {totalCards} learned</span>
-        <ProgressBar value={learnedCount} max={totalCards} />
+        {#if phase === "final-review"}
+          <span class="progress-text">Final Review — {sectionMastered} of {sectionTotal} reviewed</span>
+        {:else}
+          <span class="progress-text">Section {sectionIndex} of {totalSections} — {sectionMastered} of {sectionTotal} mastered</span>
+        {/if}
+        <ProgressBar value={sectionMastered} max={sectionTotal} />
       </div>
       <div class="card-chips">
-        {#each cardList as card}
+        {#each sectionCardList as card}
           <div
             class="card-chip"
             class:chip-active={card.id === currentCardId}
-            class:chip-0={card.level === 0}
-            class:chip-1={card.level === 1}
-            class:chip-2={card.level === 2}
-            class:chip-learned={card.level >= 3}
-            title="{card.front} — {levelLabel(card.level)}"
+            class:chip-new={card.correctCount === 0 && !card.mastered}
+            class:chip-progress={card.correctCount > 0 && !card.mastered}
+            class:chip-learned={card.mastered}
+            title={card.front}
           ></div>
         {/each}
       </div>
@@ -275,8 +279,8 @@
 
     <div class="question-card">
       <div class="question-meta">
-        <span class="level-badge level-{cardProgress.get(currentCardId)?.level ?? 0}">
-          {levelLabel(cardProgress.get(currentCardId)?.level ?? 0)}
+        <span class="level-badge level-{Math.min(currentProgress?.correctCount ?? 0, 2)}">
+          {currentProgress?.correctCount ?? 0}/3
         </span>
         <span class="question-type-label">
           {currentQuestionType === "MultipleChoice" ? "Multiple Choice" : "Written Answer"}
@@ -287,12 +291,12 @@
         {#each [0, 1, 2] as step}
           <div
             class="level-step"
-            class:step-done={step < (cardProgress.get(currentCardId)?.level ?? 0)}
-            class:step-current={step === (cardProgress.get(currentCardId)?.level ?? 0) && (cardProgress.get(currentCardId)?.level ?? 0) < 3}
+            class:step-done={step < (currentProgress?.correctCount ?? 0)}
+            class:step-current={step === (currentProgress?.correctCount ?? 0) && (currentProgress?.correctCount ?? 0) < 3}
           ></div>
         {/each}
         <span class="level-steps-label">
-          {Math.min(cardProgress.get(currentCardId)?.level ?? 0, 3)}/3
+          {Math.min(currentProgress?.correctCount ?? 0, 3)}/3
         </span>
       </div>
 
@@ -337,25 +341,25 @@
           </div>
         {/if}
       {:else}
-        <div class="feedback" class:correct={feedbackState.correct} class:incorrect={!feedbackState.correct} class:just-learned={feedbackState.justLearned} role="status" aria-live="polite">
-          {#if feedbackState.justLearned}
+        <div class="feedback" class:correct={feedbackState.correct} class:incorrect={!feedbackState.correct} class:just-learned={feedbackState.justMastered} role="status" aria-live="polite">
+          {#if feedbackState.justMastered}
             <div class="learned-celebration">
               <span class="learned-check">&#10003;</span>
-              <p class="feedback-text learned-text">Learned!</p>
+              <p class="feedback-text learned-text">Mastered!</p>
             </div>
             <p class="learned-subtitle">You've mastered this term</p>
           {:else if feedbackState.correct}
             <p class="feedback-text">Correct!</p>
             <p class="level-up-msg">
-              Level {feedbackState.newLevel}/3 — {#if feedbackState.newLevel === 1}Keep going!{:else if feedbackState.newLevel === 2}One more to master!{:else}Nice!{/if}
+              {feedbackState.newCorrectCount}/3 — {#if feedbackState.newCorrectCount === 1}Keep going!{:else if feedbackState.newCorrectCount === 2}One more to master!{:else}Nice!{/if}
             </p>
           {:else}
             <p class="feedback-text">Incorrect</p>
             <p class="correct-answer">Correct answer: {@html renderMarkdown(feedbackState.correctAnswer)}</p>
-            <p class="reset-msg">Reset to start — you'll see this one again</p>
+            <p class="reset-msg">Progress reduced — you'll see this one again</p>
           {/if}
 
-          {#if currentQuestionType === "MultipleChoice" && !feedbackState.justLearned}
+          {#if currentQuestionType === "MultipleChoice" && !feedbackState.justMastered}
             <div class="mc-options feedback-options">
               {#each currentOptions as option}
                 <div
