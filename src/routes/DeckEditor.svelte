@@ -10,6 +10,7 @@
   let editBack = $state("");
   let newFront = $state("");
   let newBack = $state("");
+  let errorMsg = $state("");
 
   async function addCard() {
     if (!newFront.trim() || !newBack.trim() || !$currentDeck) return;
@@ -59,13 +60,17 @@
 
   async function handleExport() {
     if (!isTauri || !$currentDeck) return;
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    const filePath = await save({
-      defaultPath: `${$currentDeck.title}.csv`,
-      filters: [{ name: "CSV", extensions: ["csv"] }],
-    });
-    if (!filePath) return;
-    await api.exportDeckCsv($currentDeck.id, filePath);
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const filePath = await save({
+        defaultPath: `${$currentDeck.title}.csv`,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (!filePath) return;
+      await api.exportDeckCsv($currentDeck.id, filePath);
+    } catch (e) {
+      errorMsg = e instanceof Error ? e.message : String(e);
+    }
   }
 </script>
 
@@ -82,6 +87,10 @@
         <button class="secondary" onclick={handleExport}>Export CSV</button>
       {/if}
     </div>
+
+    {#if errorMsg}
+      <p class="error-msg" role="alert">{errorMsg}</p>
+    {/if}
 
     <div class="add-card">
       <h3>Add Card</h3>
@@ -217,5 +226,10 @@
     border: 1px dashed var(--border);
     border-radius: var(--radius);
     background: rgba(24,24,27,0.5);
+  }
+  .error-msg {
+    color: var(--danger);
+    text-align: center;
+    padding: 16px;
   }
 </style>

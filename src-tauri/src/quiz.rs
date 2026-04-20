@@ -108,7 +108,14 @@ pub fn load_test_results(data_dir: &Path, deck_id: &str) -> Result<Vec<TestResul
     let dir = storage::ensure_subdir(data_dir, "tests")?;
     Ok(storage::list_json_files(&dir)
         .iter()
-        .filter_map(|p| storage::read_json::<TestResult>(p))
+        .filter_map(|p| match storage::read_json::<TestResult>(p) {
+            Ok(Some(result)) => Some(result),
+            Ok(None) => None,
+            Err(e) => {
+                eprintln!("skipping corrupted test result file {}: {}", p.display(), e);
+                None
+            }
+        })
         .filter(|r| r.deck_id == deck_id)
         .collect())
 }

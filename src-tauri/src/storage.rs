@@ -22,9 +22,14 @@ pub fn ensure_subdir(base: &Path, name: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
-    let content = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&content).ok()
+pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, String> {
+    match fs::read_to_string(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("failed to read {}: {}", path.display(), e)),
+        Ok(content) => serde_json::from_str(&content)
+            .map(Some)
+            .map_err(|e| format!("Failed to parse {}: {}", path.display(), e)),
+    }
 }
 
 pub fn write_json<T: serde::Serialize>(path: &Path, data: &T) -> Result<(), String> {
@@ -64,7 +69,7 @@ mod tests {
         data.insert("key".to_string(), "value".to_string());
 
         write_json(&path, &data).unwrap();
-        let result: Option<HashMap<String, String>> = read_json(&path);
+        let result: Option<HashMap<String, String>> = read_json(&path).unwrap();
 
         assert!(result.is_some());
         assert_eq!(result.unwrap().get("key").unwrap(), "value");
@@ -73,8 +78,18 @@ mod tests {
     #[test]
     fn test_read_json_missing_file() {
         let path = PathBuf::from("/nonexistent/file.json");
-        let result: Option<HashMap<String, String>> = read_json(&path);
+        let result: Option<HashMap<String, String>> = read_json(&path).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_read_json_corrupt_file_returns_err() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("corrupt.json");
+        fs::write(&path, b"not valid json{{{{").unwrap();
+        let result: Result<Option<HashMap<String, String>>, String> = read_json(&path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().starts_with("Failed to parse"));
     }
 
     #[test]

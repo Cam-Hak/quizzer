@@ -28,26 +28,33 @@ test.describe("Study Mode", () => {
     if (hasWritten) {
       const prompt = await page.locator(".question-card h3").textContent();
       const match = prompt?.match(/(\d)\+(\d)/);
-      const answer = match ? String(Number(match[1]) + Number(match[2])) : "guess";
+      if (!match) throw new Error(`Could not parse question prompt for written answer: "${prompt}"`);
+      const answer = String(Number(match[1]) + Number(match[2]));
       await page.fill('input[placeholder="Type your answer..."]', answer);
       await page.locator(".written-form button").click();
+      // After submitting a written answer, a judging screen appears — dismiss it
+      await expect(page.locator(".judge-card")).toBeVisible();
+      await page.click("text=I was right");
     } else {
       // Find and click the correct MC option
       const prompt = await page.locator(".question-card h3").textContent();
       const match = prompt?.match(/(\d)\+(\d)/);
-      const correctAnswer = match ? String(Number(match[1]) + Number(match[2])) : "";
+      if (!match) throw new Error(`Could not parse question prompt for MC answer: "${prompt}"`);
+      const correctAnswer = String(Number(match[1]) + Number(match[2]));
       const options = page.locator(".mc-option");
       const count = await options.count();
       let clicked = false;
       for (let i = 0; i < count; i++) {
         const text = await options.nth(i).textContent();
-        if (text?.trim() === correctAnswer) {
+        // textContent is "N optionText" — strip key-hint prefix to get option value
+        const optionValue = text?.trim().replace(/^\d+\s+/, "") ?? "";
+        if (optionValue === correctAnswer) {
           await options.nth(i).click();
           clicked = true;
           break;
         }
       }
-      if (!clicked) await options.first().click();
+      if (!clicked) throw new Error(`Correct MC option "${correctAnswer}" not found among options`);
     }
     await expect(page.locator(".feedback-text")).toBeVisible();
     await page.click("text=Continue");
@@ -59,7 +66,7 @@ test.describe("Study Mode", () => {
 
     await expect(page.locator(".question-card h3")).toBeVisible();
     await expect(page.locator(".mc-option")).toHaveCount(4);
-    await expect(page.locator(".progress-text")).toContainText("0 of 4 learned");
+    await expect(page.locator(".progress-text")).toContainText("0 of 4 mastered");
   });
 
   test("correct MC answer shows feedback and continues", async ({ page }) => {
@@ -68,11 +75,19 @@ test.describe("Study Mode", () => {
 
     await expect(page.locator(".mc-option")).toHaveCount(4);
 
-    // Find and click the correct answer
+    // Find and click the correct answer (buttons have key-hint prefix)
     const prompt = await page.locator(".question-card h3").textContent();
     const match = prompt?.match(/(\d)\+(\d)/);
     const correctAnswer = match ? String(Number(match[1]) + Number(match[2])) : "";
-    await page.locator(".mc-option").filter({ hasText: new RegExp(`^${correctAnswer}$`) }).click();
+    const options = page.locator(".mc-option");
+    const count = await options.count();
+    for (let i = 0; i < count; i++) {
+      const text = await options.nth(i).textContent();
+      if (text?.trim().replace(/^\d+\s+/, "") === correctAnswer) {
+        await options.nth(i).click();
+        break;
+      }
+    }
 
     await expect(page.locator(".feedback-text")).toContainText("Correct");
     await page.click("text=Continue");
@@ -100,11 +115,19 @@ test.describe("Study Mode", () => {
     await createDeckWithCards(page, "Complete Deck", fourCards);
     await page.click("text=Study");
 
-    // Each card needs 3 correct answers to reach level 3
-    // 4 cards x 3 answers = 12 answers minimum, but interleaving adds more
-    for (let i = 0; i < 30; i++) {
+    // Each card needs 3 correct answers to reach level 3. With 4 cards and possible
+    // wrong-answer resets, allow up to 60 iterations to guarantee completion.
+    for (let i = 0; i < 60; i++) {
       const isComplete = await page.locator("h2:has-text('Session Complete')").isVisible();
       if (isComplete) break;
+
+      // A section-complete screen may appear between sections — advance past it
+      const isSectionComplete = await page.locator("h2:has-text('Section')").isVisible();
+      if (isSectionComplete) {
+        await page.locator("button.primary").click();
+        continue;
+      }
+
       await answerCurrentQuestion(page);
     }
 
@@ -132,11 +155,19 @@ test.describe("Study Mode", () => {
     await expect(page.locator(".level-step")).toHaveCount(3);
     await expect(page.locator(".level-steps-label")).toHaveText("0/3");
 
-    // Answer first question correctly by finding the right option
+    // Answer first question correctly (buttons have key-hint prefix)
     const prompt = await page.locator(".question-card h3").textContent();
     const match = prompt?.match(/(\d)\+(\d)/);
     const correctAnswer = match ? String(Number(match[1]) + Number(match[2])) : "";
-    await page.locator(".mc-option").filter({ hasText: new RegExp(`^${correctAnswer}$`) }).click();
+    const options = page.locator(".mc-option");
+    const count = await options.count();
+    for (let i = 0; i < count; i++) {
+      const text = await options.nth(i).textContent();
+      if (text?.trim().replace(/^\d+\s+/, "") === correctAnswer) {
+        await options.nth(i).click();
+        break;
+      }
+    }
     await expect(page.locator(".feedback-text")).toBeVisible();
     await page.click("text=Continue");
 
@@ -152,8 +183,9 @@ test.describe("Study Mode", () => {
     await page.click("text=Study");
 
     // Answer same card 3 times correctly to reach level 3
-    // Written-only since <4 cards
-    for (let i = 0; i < 6; i++) {
+    // Written-only since <4 cards — each submit is followed by a judging step
+    let celebrationSeen = false;
+    for (let i = 0; i < 10; i++) {
       const isComplete = await page.locator("h2:has-text('Session Complete')").isVisible();
       if (isComplete) break;
 
@@ -162,9 +194,14 @@ test.describe("Study Mode", () => {
       await page.fill('input[placeholder="Type your answer..."]', answer);
       await page.locator(".written-form button").click();
 
+      // Handle the judging step that always appears after a written submission
+      await expect(page.locator(".judge-card")).toBeVisible();
+      await page.click("text=I was right");
+
       const isLearned = await page.locator(".learned-celebration").isVisible();
       if (isLearned) {
-        await expect(page.locator(".learned-text")).toHaveText("Learned!");
+        celebrationSeen = true;
+        await expect(page.locator(".learned-text")).toHaveText("Mastered!");
         await expect(page.locator(".learned-check")).toBeVisible();
         await page.click("text=Continue");
         break;
@@ -173,6 +210,8 @@ test.describe("Study Mode", () => {
       await expect(page.locator(".feedback-text")).toBeVisible();
       await page.click("text=Continue");
     }
+
+    expect(celebrationSeen).toBe(true);
   });
 
   test("study again button restarts the session", async ({ page }) => {
@@ -182,15 +221,27 @@ test.describe("Study Mode", () => {
     ]);
     await page.click("text=Study");
 
-    // Complete session (2 cards x 3 correct written answers = 6 answers)
+    // Complete session (2 cards x 3 correct written answers each)
     for (let i = 0; i < 20; i++) {
       const isComplete = await page.locator("h2:has-text('Session Complete')").isVisible();
       if (isComplete) break;
+
+      // A section-complete screen may appear — advance past it
+      const isSectionComplete = await page.locator("h2:has-text('Section')").isVisible();
+      if (isSectionComplete) {
+        await page.locator("button.primary").click();
+        continue;
+      }
 
       const prompt = await page.locator(".question-card h3").textContent();
       const answer = prompt?.includes("France") ? "Paris" : "Tokyo";
       await page.fill('input[placeholder="Type your answer..."]', answer);
       await page.locator(".written-form button").click();
+
+      // Handle the judging step
+      await expect(page.locator(".judge-card")).toBeVisible();
+      await page.click("text=I was right");
+
       await expect(page.locator(".feedback-text")).toBeVisible();
       await page.click("text=Continue");
     }

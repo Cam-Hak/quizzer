@@ -130,7 +130,7 @@ quizzer/
 │   ├── App.svelte              # Root layout and sidebar navigation
 │   ├── app.css                 # Design tokens, global styles, animations
 │   ├── routes/                 # Page views (Home, DeckEditor, Flashcards, Study, Test)
-│   ├── components/             # Reusable UI (Flashcard, DeckCard, ProgressBar, RatingButtons)
+│   ├── components/             # Reusable UI (Flashcard, DeckCard, ProgressBar)
 │   └── lib/
 │       ├── tauri.ts            # Typed wrappers for Tauri IPC calls
 │       ├── mock.ts             # In-memory mock backend for E2E testing

@@ -5,6 +5,12 @@ mod decks;
 mod review;
 mod quiz;
 
+use std::sync::Mutex;
+
+struct AppState {
+    write_lock: Mutex<()>,
+}
+
 fn get_data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     storage::data_dir(app)
 }
@@ -32,19 +38,30 @@ fn delete_deck(app: tauri::AppHandle, deck_id: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn add_card(app: tauri::AppHandle, deck_id: String, front: String, back: String) -> Result<Option<decks::Card>, String> {
+fn add_card(app: tauri::AppHandle, state: tauri::State<AppState>, deck_id: String, front: String, back: String) -> Result<Option<decks::Card>, String> {
+    if front.len() > 50_000 || back.len() > 50_000 {
+        return Err("Card content too large (max 50KB per side)".to_string());
+    }
+    let _lock = state.write_lock.lock().unwrap();
     let data_dir = get_data_dir(&app)?;
     let mut deck = match decks::load_deck(&data_dir, &deck_id)? {
         Some(d) => d,
         None => return Ok(None),
     };
+    if deck.cards.len() >= 10_000 {
+        return Err("Deck card limit reached (max 10,000 cards)".to_string());
+    }
     let card = deck.add_card(front, back);
     decks::save_deck(&data_dir, &deck)?;
     Ok(Some(card))
 }
 
 #[tauri::command]
-fn update_card(app: tauri::AppHandle, deck_id: String, card_id: String, front: String, back: String) -> Result<bool, String> {
+fn update_card(app: tauri::AppHandle, state: tauri::State<AppState>, deck_id: String, card_id: String, front: String, back: String) -> Result<bool, String> {
+    if front.len() > 50_000 || back.len() > 50_000 {
+        return Err("Card content too large (max 50KB per side)".to_string());
+    }
+    let _lock = state.write_lock.lock().unwrap();
     let data_dir = get_data_dir(&app)?;
     if let Some(mut deck) = decks::load_deck(&data_dir, &deck_id)? {
         if deck.update_card(&card_id, front, back) {
@@ -56,7 +73,8 @@ fn update_card(app: tauri::AppHandle, deck_id: String, card_id: String, front: S
 }
 
 #[tauri::command]
-fn remove_card(app: tauri::AppHandle, deck_id: String, card_id: String) -> Result<bool, String> {
+fn remove_card(app: tauri::AppHandle, state: tauri::State<AppState>, deck_id: String, card_id: String) -> Result<bool, String> {
+    let _lock = state.write_lock.lock().unwrap();
     let data_dir = get_data_dir(&app)?;
     if let Some(mut deck) = decks::load_deck(&data_dir, &deck_id)? {
         if deck.remove_card(&card_id) {
@@ -80,10 +98,11 @@ fn get_due_cards(app: tauri::AppHandle, deck_id: String) -> Result<Vec<String>, 
 }
 
 #[tauri::command]
-fn submit_rating(app: tauri::AppHandle, deck_id: String, card_id: String, rating: u8) -> Result<(), String> {
+fn submit_rating(app: tauri::AppHandle, state: tauri::State<AppState>, deck_id: String, card_id: String, rating: u8) -> Result<(), String> {
     if !(1..=4).contains(&rating) {
         return Err(format!("invalid rating: {}, must be 1-4", rating));
     }
+    let _lock = state.write_lock.lock().unwrap();
     let data_dir = get_data_dir(&app)?;
     let mut review_state = review::load_review_state(&data_dir, &deck_id)?;
     let card_state = review_state.cards.entry(card_id).or_default();
@@ -133,6 +152,7 @@ fn import_deck_csv(app: tauri::AppHandle, file_path: String, title: String) -> R
 
 fn main() {
     tauri::Builder::default()
+        .manage(AppState { write_lock: Mutex::new(()) })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_decks,

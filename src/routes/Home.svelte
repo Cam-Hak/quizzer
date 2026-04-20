@@ -32,12 +32,16 @@
 
   async function handleCreate() {
     if (!newTitle.trim()) return;
-    const deck = await api.createDeck(newTitle.trim(), newDescription.trim());
-    newTitle = "";
-    newDescription = "";
-    showCreate = false;
-    $currentDeck = deck;
-    $currentView = "editor";
+    try {
+      const deck = await api.createDeck(newTitle.trim(), newDescription.trim());
+      newTitle = "";
+      newDescription = "";
+      showCreate = false;
+      $currentDeck = deck;
+      $currentView = "editor";
+    } catch (e) {
+      errorMsg = e instanceof Error ? e.message : String(e);
+    }
   }
 
   function selectDeck(deck: typeof $decks[0]) {
@@ -47,23 +51,31 @@
 
   async function deleteDeck(deckId: string) {
     if (!confirm("Delete this deck? This cannot be undone.")) return;
-    await api.deleteDeck(deckId);
-    await loadDecks();
+    try {
+      await api.deleteDeck(deckId);
+      await loadDecks();
+    } catch (e) {
+      errorMsg = e instanceof Error ? e.message : String(e);
+    }
   }
 
   async function handleImport() {
     if (!isTauri) return;
-    const { open } = await import("@tauri-apps/plugin-dialog");
-    const filePath = await open({
-      filters: [{ name: "CSV", extensions: ["csv", "tsv", "txt"] }],
-    });
-    if (!filePath) return;
-    const fileName = (filePath as string).split(/[/\\]/).pop() ?? "Imported Deck";
-    const title = fileName.replace(/\.(csv|tsv|txt)$/i, "");
-    const deck = await api.importDeckCsv(filePath as string, title);
-    await loadDecks();
-    $currentDeck = deck;
-    $currentView = "editor";
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const filePath = await open({
+        filters: [{ name: "CSV", extensions: ["csv", "tsv", "txt"] }],
+      });
+      if (!filePath) return;
+      const fileName = (filePath as string).split(/[/\\]/).pop() ?? "Imported Deck";
+      const title = fileName.replace(/\.(csv|tsv|txt)$/i, "");
+      const deck = await api.importDeckCsv(filePath as string, title);
+      await loadDecks();
+      $currentDeck = deck;
+      $currentView = "editor";
+    } catch (e) {
+      errorMsg = e instanceof Error ? e.message : String(e);
+    }
   }
 </script>
 

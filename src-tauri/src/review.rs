@@ -104,10 +104,13 @@ fn review_path(data_dir: &Path, deck_id: &str) -> Result<PathBuf, String> {
 
 pub fn load_review_state(data_dir: &Path, deck_id: &str) -> Result<DeckReviewState, String> {
     let path = review_path(data_dir, deck_id)?;
-    Ok(storage::read_json(&path).unwrap_or_else(|| DeckReviewState {
-        deck_id: deck_id.to_string(),
-        cards: HashMap::new(),
-    }))
+    match storage::read_json(&path)? {
+        Some(state) => Ok(state),
+        None => Ok(DeckReviewState {
+            deck_id: deck_id.to_string(),
+            cards: HashMap::new(),
+        }),
+    }
 }
 
 pub fn save_review_state(data_dir: &Path, state: &DeckReviewState) -> Result<(), String> {

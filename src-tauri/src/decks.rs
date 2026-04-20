@@ -87,14 +87,21 @@ pub fn save_deck(data_dir: &Path, deck: &Deck) -> Result<(), String> {
 
 pub fn load_deck(data_dir: &Path, deck_id: &str) -> Result<Option<Deck>, String> {
     let path = deck_path(data_dir, deck_id)?;
-    Ok(storage::read_json(&path))
+    storage::read_json(&path)
 }
 
 pub fn list_decks(data_dir: &Path) -> Result<Vec<Deck>, String> {
     let dir = decks_dir(data_dir)?;
     Ok(storage::list_json_files(&dir)
         .iter()
-        .filter_map(|p| storage::read_json::<Deck>(p))
+        .filter_map(|p| match storage::read_json::<Deck>(p) {
+            Ok(Some(deck)) => Some(deck),
+            Ok(None) => None,
+            Err(e) => {
+                eprintln!("skipping corrupted deck file {}: {}", p.display(), e);
+                None
+            }
+        })
         .collect())
 }
 
@@ -108,10 +115,11 @@ fn validate_csv_path(file_path: &str) -> Result<PathBuf, String> {
     let resolve = if path.exists() {
         path.canonicalize().map_err(|e| format!("invalid path: {}", e))?
     } else {
-        path.parent()
+        let resolved = path.parent()
             .and_then(|p| p.canonicalize().ok())
             .map(|p| p.join(path.file_name().unwrap_or_default()))
-            .unwrap_or_else(|| path.clone())
+            .ok_or_else(|| "Parent directory does not exist".to_string())?;
+        resolved
     };
     let home = dirs::home_dir().ok_or("cannot determine home directory")?;
     let allowed = [
