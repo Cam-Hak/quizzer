@@ -11,7 +11,7 @@
 
   let phase = $state<Phase>("loading");
   let manager = $state<SectionManager | null>(null);
-  let mcQuestions = $state<Map<string, Question>>(new Map());
+  let mcQuestions = new Map<string, Question>();
   let useWrittenOnly = $state(false);
 
   let currentCardId = $state<string | null>(null);
@@ -79,22 +79,26 @@
 
     const next = manager.nextCard();
     if (!next) {
-      phase = "complete";
+      if (manager.phase === "section-complete") {
+        phase = "section-complete";
+      } else {
+        phase = "complete";
+      }
       return;
     }
 
     currentCardId = next.cardId;
+    const card = manager.getCard(next.cardId)!;
 
-    if (useWrittenOnly || next.correctCount >= 2) {
+    const q = mcQuestions.get(next.cardId);
+    if (useWrittenOnly || next.correctCount >= 2 || !q) {
       currentQuestionType = "Written";
-      const card = manager.getCard(next.cardId)!;
       currentPrompt = card.front;
       currentCorrectAnswer = card.back;
       currentOptions = [];
       writtenInput = "";
     } else {
       currentQuestionType = "MultipleChoice";
-      const q = mcQuestions.get(next.cardId)!;
       currentPrompt = q.prompt;
       currentCorrectAnswer = q.correct_answer;
       currentOptions = [...(q.options ?? [])];
@@ -383,7 +387,7 @@
 {:else if phase === "section-complete" && manager}
   <div class="section-summary">
     <h2>Section {sectionIndex} Complete</h2>
-    <p class="section-subtitle">{sectionTotal} cards mastered in this section</p>
+    <p class="section-subtitle">{sectionMastered} cards mastered in this section</p>
     <div class="stats">
       <div class="stat">
         <span class="stat-value">{manager.sectionCardCount}</span>
