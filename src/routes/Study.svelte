@@ -379,6 +379,32 @@
       {/if}
     </div>
   </div>
+{:else if phase === "section-complete" && manager}
+  <div class="section-summary">
+    <h2>Section {sectionIndex} Complete</h2>
+    <p class="section-subtitle">{sectionTotal} cards mastered in this section</p>
+    <div class="stats">
+      <div class="stat">
+        <span class="stat-value">{manager.sectionAnswered}</span>
+        <span class="stat-label">Answers</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value">
+          {manager.sectionAnswered > 0 ? Math.round((manager.sectionCorrect / manager.sectionAnswered) * 100) : 0}%
+        </span>
+        <span class="stat-label">Accuracy</span>
+      </div>
+    </div>
+    <button class="primary section-next-btn" onclick={advanceToNextSection}>
+      {#if manager.newCardQueue.length > 0}
+        Next Section
+      {:else if manager.struggleCardIds.size > 0}
+        Final Review
+      {:else}
+        Finish
+      {/if}
+    </button>
+  </div>
 {:else if phase === "complete"}
   <div class="session-summary">
     <h2>Session Complete</h2>
